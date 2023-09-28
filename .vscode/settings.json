@@ -1,0 +1,13 @@
+{
+  "deno.enable": true,
+  "deno.unstable": true,
+  "cSpell.words": [
+    "fisch",
+    "fixarray",
+    "fixext",
+    "fixint",
+    "fixmap",
+    "fixstr",
+    "msgpack"
+  ]
+}
