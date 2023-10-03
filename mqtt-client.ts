@@ -20,90 +20,72 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-import { protocol } from "./mqtt/mod.ts";
-import { DataReader } from "./helper/mod.ts";
-import { writeAll } from "https://deno.land/std@0.140.0/streams/conversion.ts";
+import * as mqtt from "./mqtt/mod.ts";
 
-// const wss = new WebSocketStream("ws://localhost:1884");
-// const { readable, writable } = await wss.connection;
-// const reader = readable.getReader();
-// const writer = writable.getWriter();
-
-// const w = new Writer();
-// await writer.write(
-//   serializeConnectPacket({ type: ControlPacketType.Connect }, w),
-// );
-// console.log(await reader.read());
-
-const conn = await Deno.connect({
-  hostname: "127.0.0.1",
-  port: 1883,
-  transport: "tcp",
-});
-
-conn.setNoDelay(true);
-
-const w = new protocol.Writer();
-const conMsg = protocol.serializeConnectPacket(
-  {
-    /*client_id: asClientID("fisch")*/
-    keepalive: 60 as protocol.Seconds,
-    will: {
-      topic: protocol.asTopic("hi"),
-    },
-  },
-  w,
+//const { readable, writable, connection } = await connect("ws://127.0.0.1:1884");
+const { readable, writable, connection } = await mqtt.connect(
+  "tcp://127.0.0.1:1883",
 );
-await conn.write(conMsg);
 
-const buf = new Uint8Array(65000);
-async function readAndPrint() {
-  const len = await conn.read(buf);
-  if (len === null) {
-    return null;
-  }
-  if (len === 0) {
-    return;
-  }
-  const reader = new DataReader(buf.subarray(0, len ?? 0));
-  // TODO: handle incomplete message
-  const fixedHeader = protocol.readFixedHeader(reader);
-  const packet = protocol.deserializePacket(
-    fixedHeader,
-    reader,
-  );
-  if (packet.type === protocol.ControlPacketType.Disconnect) {
+const reader = readable.getReader();
+const writer = writable.getWriter();
+
+function printPacket(packet: mqtt.AllPacket) {
+  if (packet.type === mqtt.ControlPacketType.Disconnect) {
     console.log(
-      protocol.ControlPacketType[packet.type],
-      protocol
+      mqtt.ControlPacketType[packet.type],
+      mqtt
         .DisconnectReasonCode[
           packet.reason_code ??
-            protocol.DisconnectReasonCode.Normal_disconnection
+            mqtt.DisconnectReasonCode.Normal_disconnection
         ],
       packet,
     );
   } else {
-    console.log(protocol.ControlPacketType[packet.type], packet);
+    console.log(mqtt.ControlPacketType[packet.type], packet);
   }
-  return packet;
 }
 
-await readAndPrint();
+function printPacket2(
+  msg: ReadableStreamDefaultReadResult<mqtt.AllPacket>,
+) {
+  if (msg.done) {
+    console.log("Done");
+    return;
+  }
+  printPacket(msg.value);
+}
 
-const subMsg = protocol.serializeSubscribePacket({
-  packet_identifier: 2000 as protocol.PacketIdentifier,
-  subscriptions: [{ topic: protocol.asTopicFilter("#") }],
+const w = new mqtt.Writer();
+const conMsg = mqtt.serializeConnectPacket(
+  {
+    /*client_id: asClientID("fisch")*/
+    keepalive: 60 as mqtt.Seconds,
+    will: {
+      topic: mqtt.asTopic("hi"),
+    },
+  },
+  w,
+);
+// await
+writer.write(conMsg);
+
+printPacket2(await reader.read());
+
+const subMsg = mqtt.serializeSubscribePacket({
+  packet_identifier: 2000 as mqtt.PacketIdentifier,
+  subscriptions: [{ topic: mqtt.asTopicFilter("#") }],
 }, w);
-await writeAll(conn, subMsg);
+writer.write(subMsg);
 
-await readAndPrint();
+printPacket2(await reader.read());
 
-const pubMsg = protocol.serializePublishPacket({
-  topic: protocol.asTopic("hi"),
+const pubMsg = mqtt.serializePublishPacket({
+  topic: mqtt.asTopic("hi"),
   payload: "wie gehts?",
   retain: true,
 }, w);
-await writeAll(conn, pubMsg);
+writer.write(pubMsg);
 
 const sleep = async (time: number) =>
   await new Promise((r) => setTimeout(r, time));
@@ -112,22 +94,17 @@ await sleep(1000);
 
 const sendPing = async () => {
   while (true) {
-    await writeAll(conn, protocol.PingReqMessage);
+    writer.write(mqtt.PingReqMessage);
     await sleep(10000);
   }
 };
 
 sendPing();
 
-while (true) {
-  const packet = await readAndPrint();
-  if (packet === null) {
-    break;
-  }
-  if (packet === undefined) {
-    continue;
-  }
+reader.releaseLock();
+for await (const packet of readable) {
+  printPacket(packet);
 }
 
 console.log("exiting");
-conn.close();
+connection.close();
