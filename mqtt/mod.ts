@@ -1659,17 +1659,24 @@ export class DeserializeStream {
       newChunk.set(chunk, this.#particalChunk.length);
       this.#particalChunk = undefined;
     }
+    let firstMessage = true;
     const reader = new DataReader(chunk);
-    const fixedHeader = readFixedHeader(reader);
-    if (fixedHeader === undefined) {
-      // incomplete mqtt message, decode and handle the data the next time we receive more data
-      this.#particalChunk = chunk;
-      return;
-    }
-    controller.enqueue(deserializePacket(fixedHeader, reader));
-    // store the left over data
-    if (reader.hasMoreData) {
-      this.#particalChunk = reader.getUint8Array(reader.remainingSize);
+    while (reader.hasMoreData) {
+      const pos = reader.pos;
+      const fixedHeader = readFixedHeader(reader);
+      if (fixedHeader === undefined) {
+        // incomplete mqtt packet, decode and handle the data the next time we receive more data
+        if (firstMessage) {
+          this.#particalChunk = chunk;
+        } else {
+          // store the left over data
+          reader.pos = pos;
+          this.#particalChunk = reader.getUint8Array(reader.remainingSize);
+        }
+        return;
+      }
+      controller.enqueue(deserializePacket(fixedHeader, reader));
+      firstMessage = false;
     }
   }
 
