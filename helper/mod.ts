@@ -44,6 +44,10 @@ export function intoUint8Array(
   }
 }
 
+export async function sleep(time: number) {
+  await new Promise((r) => setTimeout(r, time));
+}
+
 export function toHexString(arr: ArrayLike<number> | Iterable<number>) {
   return Array.from(arr, (byte) => {
     return `0${(byte & 0xFF).toString(16)}`.slice(-2);
