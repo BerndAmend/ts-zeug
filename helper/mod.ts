@@ -44,6 +44,25 @@ export function intoUint8Array(
   }
 }
 
+/// based on the implementation from https://github.com/ai/nanoid
+export type NanoID = Branded<string, "NanoID">;
+export function nanoid(t = 21): NanoID {
+  return crypto.getRandomValues(new Uint8Array(t))
+    .reduce(
+      (
+        result,
+        value,
+      ) => (result += (value &= 63) < 36
+        ? value.toString(36)
+        : value < 62
+        ? (value - 26).toString(36).toUpperCase()
+        : value > 62
+        ? "-"
+        : "_"),
+      "",
+    ) as NanoID;
+}
+
 export async function sleep(time: number) {
   await new Promise((r) => setTimeout(r, time));
 }
