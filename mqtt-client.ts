@@ -21,45 +21,31 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 import * as mqtt from "./mqtt/mod.ts";
+import { nanoid, sleep } from "./helper/mod.ts";
 
-//const { readable, writable, connection } = await connect("ws://127.0.0.1:1884");
-const { readable, writable, connection } = await mqtt.connect(
+const { readable, writable, connection } = await mqtt.connectLowLevel(
+  //"ws://127.0.0.1:1884",
   "tcp://127.0.0.1:1883",
 );
 
-const reader = readable.getReader();
-const writer = writable.getWriter();
+const [reader, writer] = [readable.getReader(), writable.getWriter()];
 
-function printPacket(packet: mqtt.AllPacket) {
-  if (packet.type === mqtt.ControlPacketType.Disconnect) {
-    console.log(
-      mqtt.ControlPacketType[packet.type],
-      mqtt
-        .DisconnectReasonCode[
-          packet.reason_code ??
-            mqtt.DisconnectReasonCode.Normal_disconnection
-        ],
-      packet,
-    );
-  } else {
-    console.log(mqtt.ControlPacketType[packet.type], packet);
-  }
-}
-
-function printPacket2(
+function printPacket(
   msg: ReadableStreamDefaultReadResult<mqtt.AllPacket>,
 ) {
   if (msg.done) {
     console.log("Done");
     return;
   }
-  printPacket(msg.value);
+  mqtt.logPacket(msg.value);
 }
 
 const w = new mqtt.Writer();
 const conMsg = mqtt.serializeConnectPacket(
   {
-    /*client_id: asClientID("fisch")*/
+    client_id: mqtt.asClientID(
+      nanoid().replaceAll("-", "").replaceAll("_", ""),
+    ),
     keepalive: 60 as mqtt.Seconds,
     will: {
       topic: mqtt.asTopic("hi"),
@@ -67,44 +53,50 @@ const conMsg = mqtt.serializeConnectPacket(
   },
   w,
 );
-// await
-writer.write(conMsg);
+await writer.write(conMsg);
 
-printPacket2(await reader.read());
+printPacket(await reader.read());
 
 const subMsg = mqtt.serializeSubscribePacket({
   packet_identifier: 2000 as mqtt.PacketIdentifier,
   subscriptions: [{ topic: mqtt.asTopicFilter("#") }],
 }, w);
-writer.write(subMsg);
+await writer.write(subMsg);
 
-printPacket2(await reader.read());
+printPacket(await reader.read());
 
 const pubMsg = mqtt.serializePublishPacket({
   topic: mqtt.asTopic("hi"),
   payload: "wie gehts?",
   retain: true,
 }, w);
-writer.write(pubMsg);
-
-const sleep = async (time: number) =>
-  await new Promise((r) => setTimeout(r, time));
+await writer.write(pubMsg);
 
 await sleep(1000);
 
 const sendPing = async () => {
-  while (true) {
-    writer.write(mqtt.PingReqMessage);
-    await sleep(10000);
+  try {
+    while (true) {
+      await writer.write(mqtt.PingReqMessage);
+      await sleep(10000);
+    }
+  } catch (e) {
+    console.log("Write error", e);
   }
 };
 
 sendPing();
 
+// (async () => {
+//   await sleep(10000);
+//   // await writer.write(mqtt.serializeDisconnectPacket({}, w));
+//   // await sleep(2000);
+//   connection.close();
+// })();
+
 reader.releaseLock();
 for await (const packet of readable) {
-  printPacket(packet);
+  mqtt.logPacket(packet);
 }
 
 console.log("exiting");
-connection.close();

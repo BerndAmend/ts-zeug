@@ -20,7 +20,7 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-import { Branded, DataReader, DataWriter } from "../helper/mod.ts";
+import { Branded, DataReader, DataWriter, nanoid } from "../helper/mod.ts";
 import { streamifyWebSocket } from "../helper/websocket.ts";
 
 //#region Types
@@ -201,6 +201,7 @@ export type ClientID = Branded<string, "ClientID">; // 3.1.3.1
 export type Topic = Branded<string, "Topic">;
 // similar to topic to also allows the characters # and ?
 export type TopicFilter = Branded<string, "TopicFilter">;
+export type Milliseconds = Branded<number, "Milliseconds">;
 export type Seconds = Branded<number, "Seconds">;
 export type PacketIdentifier = Branded<number, "PacketIdentifier">;
 
@@ -246,7 +247,7 @@ export function asTopicFilter(input: string): TopicFilter {
 
 export function asClientID(input: string): ClientID {
   const charSet =
-    "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-";
+    "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
   for (const o of input) {
     if (!charSet.includes(o)) {
       throw new Error(
@@ -505,6 +506,20 @@ export type AllPacket =
   | PingRespPacket
   | DisconnectPacket
   | AuthPacket;
+
+export function logPacket(packet: AllPacket) {
+  if (packet.type === ControlPacketType.Disconnect) {
+    console.log(
+      ControlPacketType[packet.type],
+      DisconnectReasonCode[
+        packet.reason_code ?? DisconnectReasonCode.Normal_disconnection
+      ],
+      packet,
+    );
+  } else {
+    console.log(ControlPacketType[packet.type], packet);
+  }
+}
 //#endregion
 
 //#region Serialize
@@ -1684,7 +1699,7 @@ export class DeserializeStream {
 }
 
 /// You may also want to have a look at the Client
-export async function connect(address: URL | string): Promise<{
+export async function connectLowLevel(address: URL | string): Promise<{
   readable: ReadableStream<AllPacket>;
   writable: WritableStream<string | ArrayBufferView | ArrayBufferLike | Blob>;
   connection: WebSocket | WebSocketStream | Deno.TcpConn;
@@ -1711,7 +1726,7 @@ export async function connect(address: URL | string): Promise<{
     const wss = new WebSocketStream(address.toString(), {
       protocols: ["mqtt"],
     });
-    const conn = await wss.connection;
+    const conn = await wss.opened;
     return {
       readable: conn.readable.pipeThrough(ts),
       writable: conn.writable,
@@ -1736,31 +1751,61 @@ export async function connect(address: URL | string): Promise<{
   throw new Error(`Unsupported protocol ${address.protocol}`);
 }
 
-// TODO
-export class Client implements Disposable {
-  constructor(address: URL | string) {
+// Default Client implementation providing the following features
+//  - auto-reconnect
+//  - send pings
+//  - automatically resubscribe
+//  - automatically republish retained data
+//  - callback for disconnect/connect
+//  - use subscription id to efficiently dispatch them
+//  - automatically use topic aliases
+export class Client implements AsyncDisposable {
+  constructor(
+    public readonly address: URL | string,
+    public readonly connectPacket?: MakeSerializePacketType<ConnectPacket>,
+    properties?: {
+      reconnectTime?: Milliseconds; // default: 1_000 Milliseconds
+      connectTimeout?: Milliseconds; // default: 10_000 Milliseconds, timeout if no CONNACK is received
+    },
+  ) {
+    this.connectPacket = {
+      type: ControlPacketType.Connect,
+      client_id: asClientID(nanoid().replaceAll("-", "").replaceAll("_", "")),
+    };
+  }
+
+  async [Symbol.asyncDispose]() {
+    await this.close();
+  }
+
+  // publish fails if offline
+  async publish(
+    packet: PublishPacket,
+    options: { queueIfClientIsOffline?: boolean },
+  ) {
+  }
+
+  async subscribe(
+    packet: SubscribePacket,
+    handler: (packet: PublishPacket) => void,
+  ) {
+  }
+
+  async unsubscribe() {
+  }
+
+  async close() {
+    // https://developer.chrome.com/articles/websocketstream/
+  }
+}
+
+// TODO: check how mosquitto matches subscriptions
+// https://github.dev/eclipse/mosquitto/blob/f762a3fd1ced66b6cd32d8dc137f0523708dac1f/lib/util_topic.c#L193-L194
+export class Broker implements Disposable {
+  constructor() {
   }
 
   [Symbol.dispose]() {
-    this.close();
-  }
-
-  // TODO:
-  // send pings
-  // auto-reconnect
-  // automatically republish retained data
-  // callback for disconnect/connect
-  // use subscription id to efficiently dispatch them
-  // automatically use topic aliases
-
-  publish(packet: PublishPacket) {
-  }
-
-  subscribe(packet: SubscribePacket, handler: (packet: PublishPacket) => void) {
-  }
-
-  close() {
-    // https://developer.chrome.com/articles/websocketstream/
   }
 }
 
