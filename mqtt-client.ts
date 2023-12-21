@@ -21,7 +21,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 import * as mqtt from "./mqtt/mod.ts";
-import { nanoid, sleep } from "./helper/mod.ts";
+import { sleep } from "./helper/mod.ts";
 
 const { readable, writable, connection } = await mqtt.connectLowLevel(
   //"ws://127.0.0.1:1884",
@@ -43,9 +43,6 @@ function printPacket(
 const w = new mqtt.Writer();
 const conMsg = mqtt.serializeConnectPacket(
   {
-    client_id: mqtt.asClientID(
-      nanoid().replaceAll("-", "").replaceAll("_", ""),
-    ),
     keepalive: 60 as mqtt.Seconds,
     will: {
       topic: mqtt.asTopic("hi"),
@@ -86,13 +83,6 @@ const sendPing = async () => {
 };
 
 sendPing();
-
-// (async () => {
-//   await sleep(10000);
-//   // await writer.write(mqtt.serializeDisconnectPacket({}, w));
-//   // await sleep(2000);
-//   connection.close();
-// })();
 
 reader.releaseLock();
 for await (const packet of readable) {

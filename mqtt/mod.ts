@@ -20,7 +20,7 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-import { Branded, DataReader, DataWriter, nanoid } from "../helper/mod.ts";
+import { Branded, DataReader, DataWriter, sleep } from "../helper/mod.ts";
 import { streamifyWebSocket } from "../helper/websocket.ts";
 
 //#region Types
@@ -246,15 +246,17 @@ export function asTopicFilter(input: string): TopicFilter {
 }
 
 export function asClientID(input: string): ClientID {
-  const charSet =
-    "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  for (const o of input) {
-    if (!charSet.includes(o)) {
-      throw new Error(
-        `Invalid ClientID: input '${input}' contains the invalid character '${o}' allowed characters '${charSet}'`,
-      );
-    }
-  }
+  // TODO: it doesn't really make sense to check the ClientID,
+  // when we don't know the supported charset of the server.
+  // const charSet =
+  //   "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  // for (const o of input) {
+  //   if (!charSet.includes(o)) {
+  //     throw new Error(
+  //       `Invalid ClientID: input '${input}' contains the invalid character '${o}' allowed characters '${charSet}'`,
+  //     );
+  //   }
+  // }
   return input as ClientID;
 }
 
@@ -1298,7 +1300,7 @@ function readProperties(reader: DataReader): AllProperties | undefined {
         ret.session_expiry_interval = r.getUint32() as Seconds;
         break;
       case Property.Assigned_Client_Identifier:
-        ret.assigned_client_id = asClientID(readUTF8String(r));
+        ret.assigned_client_id = readUTF8String(r) as ClientID; // mosquitto sends as client ids that contain more characters than required by the mqtt spec
         break;
       case Property.Server_Keep_Alive:
         ret.server_keep_alive = r.getUint16() as Seconds;
@@ -1698,12 +1700,16 @@ export class DeserializeStream {
   #particalChunk: Uint8Array | undefined;
 }
 
-/// You may also want to have a look at the Client
-export async function connectLowLevel(address: URL | string): Promise<{
+export type LowLevelConnection = {
   readable: ReadableStream<AllPacket>;
   writable: WritableStream<string | ArrayBufferView | ArrayBufferLike | Blob>;
   connection: WebSocket | WebSocketStream | Deno.TcpConn;
-}> {
+};
+
+/// You may also want to have a look at the Client
+export async function connectLowLevel(
+  address: URL | string,
+): Promise<LowLevelConnection> {
   const ts = new TransformStream<Uint8Array, AllPacket>(
     new DeserializeStream(),
   );
@@ -1751,6 +1757,16 @@ export async function connectLowLevel(address: URL | string): Promise<{
   throw new Error(`Unsupported protocol ${address.protocol}`);
 }
 
+export type ClientProperties = {
+  reconnectTime?: Milliseconds; // 0: no auto reconnect
+  connectTimeout?: Milliseconds; // timeout if no CONNACK is received
+};
+
+export const DefaultClientProperties: Required<ClientProperties> = {
+  reconnectTime: 1_000 as Milliseconds,
+  connectTimeout: 10_000 as Milliseconds,
+};
+
 // Default Client implementation providing the following features
 //  - auto-reconnect
 //  - send pings
@@ -1758,31 +1774,77 @@ export async function connectLowLevel(address: URL | string): Promise<{
 //  - automatically republish retained data
 //  - callback for disconnect/connect
 //  - use subscription id to efficiently dispatch them
-//  - automatically use topic aliases
 export class Client implements AsyncDisposable {
+  #writer = new Writer();
+  #writable: WritableStreamDefaultWriter | undefined;
+  #outgoing = new Map<Topic, Uint8Array>();
+  #subscriptions = new Map<PacketIdentifier, SubscribePacket>();
+  #con: LowLevelConnection | undefined;
+  #connectAck?: ConnAckPacket;
+  #messageHandlerPromise: Promise<void> | undefined;
+  #active: boolean = false;
+  #onErrorHandler: (...data: any[]) => void = console.log;
+
   constructor(
     public readonly address: URL | string,
     public readonly connectPacket?: MakeSerializePacketType<ConnectPacket>,
-    properties?: {
-      reconnectTime?: Milliseconds; // default: 1_000 Milliseconds
-      connectTimeout?: Milliseconds; // default: 10_000 Milliseconds, timeout if no CONNACK is received
-    },
+    public readonly properties?: ClientProperties, // unset values are set to DefaultClientProperties
   ) {
-    this.connectPacket = {
-      type: ControlPacketType.Connect,
-      client_id: asClientID(nanoid().replaceAll("-", "").replaceAll("_", "")),
-    };
   }
 
   async [Symbol.asyncDispose]() {
     await this.close();
   }
 
+  async open() {
+    if (this.#messageHandlerPromise) {
+      throw new Error("open was already called");
+    }
+    this.#active = true;
+    this.#messageHandlerPromise = this.#handleMessages();
+  }
+
+  async #handleMessages() {
+    while (this.#active) {
+      try {
+        this.#con = await connectLowLevel(this.address);
+      } catch (e) {
+        this.#onErrorHandler(e);
+        if (this.#active) {
+          await sleep(
+            this.properties?.reconnectTime ??
+              DefaultClientProperties.reconnectTime,
+          );
+        }
+        continue;
+      }
+      this.#writable?.write(this.connectPacket);
+      // wait until we receive the ConnAck
+
+      // keep the client id for reconnects
+    }
+  }
+
+  // on(type: "error"): void;
+  // on(type: "connect"): void;
+  // on(type: "disconnect"): void;
+  // on(type: string, handler => (...any) => void): void {}
+
   // publish fails if offline
   async publish(
     packet: PublishPacket,
     options: { queueIfClientIsOffline?: boolean },
   ) {
+    const msg = serializePublishPacket(packet, this.#writer);
+    if (packet.retain) {
+      this.#outgoing.set(packet.topic, new Uint8Array(msg));
+    }
+    if (this.#writable) {
+      await this.#writable.write(msg);
+      if (packet.payload === undefined) {
+        this.#outgoing.delete(packet.topic);
+      }
+    }
   }
 
   async subscribe(
@@ -1794,8 +1856,18 @@ export class Client implements AsyncDisposable {
   async unsubscribe() {
   }
 
-  async close() {
-    // https://developer.chrome.com/articles/websocketstream/
+  async close(disconnectPacket?: DisconnectPacket) {
+    if (this.#writable === undefined) {
+      return;
+    }
+    this.#active = false;
+    await this.#writable.write(
+      serializeDisconnectPacket(disconnectPacket ?? {}, this.#writer),
+    );
+    // await sleep(2000);
+    // connection.close();
+    // Wait for 2sec and just close the connection
+    await this.#messageHandlerPromise;
   }
 }
 
