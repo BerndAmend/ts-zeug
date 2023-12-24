@@ -49,7 +49,7 @@ export class WebSocketSink {
       this._ws.onclose = null;
     });
 
-    return new Promise((resolve) => this._ws.onopen = (e: Event) => resolve());
+    return new Promise((resolve) => this._ws.onopen = () => resolve());
   }
 
   write(chunk: string | ArrayBufferLike | Blob | ArrayBufferView) {
