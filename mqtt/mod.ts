@@ -522,6 +522,18 @@ export function logPacket(packet: AllPacket) {
     console.log(ControlPacketType[packet.type], packet);
   }
 }
+
+export function printPacket(
+  msg: { done: false; value: AllPacket } | {
+    done: true;
+  },
+) {
+  if (msg.done) {
+    console.log("Done");
+    return;
+  }
+  logPacket(msg.value);
+}
 //#endregion
 
 //#region Serialize
@@ -986,8 +998,8 @@ export function serializeSubscribePacket(
 
   w.addProperties(packet.properties, (tw: Writer, p) => {
     if (p?.subscription_identifier) {
-      w.addUint8(Property.Subscription_Identifier);
-      w.addVariableByteInteger(p.subscription_identifier);
+      tw.addUint8(Property.Subscription_Identifier);
+      tw.addVariableByteInteger(p.subscription_identifier);
     }
 
     tw.addUserProperties(p?.user_properties);
@@ -1402,7 +1414,20 @@ function deserializeConnAckPacket(
 function deserializePublishPacket(
   fixedHeader: FixedHeader,
   r: DataReader,
+  options?: {
+    alwaysTryToDecodePayloadAsUTF8String?: boolean;
+    alwaysReturnAsUint8Array?: boolean;
+  },
 ): PublishPacket {
+  if (
+    options?.alwaysReturnAsUint8Array === true &&
+    options?.alwaysTryToDecodePayloadAsUTF8String === true
+  ) {
+    throw new Error(
+      "Cannot set alwaysReturnAsUint8Array and alwaysTryToDecodePayloadAsUTF8String",
+    );
+  }
+
   const ret: PublishPacket = {
     type: ControlPacketType.Publish,
     topic: asTopic(readUTF8String(r)),
@@ -1428,8 +1453,16 @@ function deserializePublishPacket(
 
   const remainingSize = r.remainingSize;
   if (remainingSize > 0) {
-    if (props?.payload_format_indicator === true) {
-      ret.payload = r.getUTF8String(remainingSize);
+    if (
+      (options?.alwaysTryToDecodePayloadAsUTF8String !== true &&
+        props?.payload_format_indicator === true) ||
+      options?.alwaysTryToDecodePayloadAsUTF8String
+    ) {
+      try {
+        ret.payload = r.getUTF8String(remainingSize);
+      } catch {
+        ret.payload = r.getUint8Array(remainingSize);
+      }
     } else {
       ret.payload = r.getUint8Array(remainingSize);
     }
@@ -1618,6 +1651,10 @@ export function deserializeAuthPacket(
 export function deserializePacket(
   fixedHeader: FixedHeader,
   reader: DataReader,
+  options?: {
+    alwaysTryToDecodePayloadAsUTF8String?: boolean;
+    alwaysReturnAsUint8Array?: boolean;
+  },
 ): AllPacket {
   const r = reader.getDataReader(fixedHeader.length);
   switch (fixedHeader.type) {
@@ -1628,7 +1665,7 @@ export function deserializePacket(
     case ControlPacketType.ConnAck:
       return deserializeConnAckPacket(fixedHeader, r);
     case ControlPacketType.Publish:
-      return deserializePublishPacket(fixedHeader, r);
+      return deserializePublishPacket(fixedHeader, r, options);
     case ControlPacketType.PubAck:
       break;
     case ControlPacketType.PubRec:
@@ -1661,7 +1698,12 @@ export function deserializePacket(
 //#region Stream
 // https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901285
 export class DeserializeStream {
-  constructor() {
+  constructor(
+    readonly options?: {
+      alwaysTryToDecodePayloadAsUTF8String?: boolean;
+      alwaysReturnAsUint8Array?: boolean;
+    },
+  ) {
   }
 
   transform(
@@ -1675,6 +1717,7 @@ export class DeserializeStream {
       newChunk.set(this.#particalChunk);
       newChunk.set(chunk, this.#particalChunk.length);
       this.#particalChunk = undefined;
+      chunk = newChunk;
     }
     let firstMessage = true;
     const reader = new DataReader(chunk);
@@ -1692,7 +1735,13 @@ export class DeserializeStream {
         }
         return;
       }
-      controller.enqueue(deserializePacket(fixedHeader, reader));
+      // check if we received enough data
+      if (reader.remainingSize < fixedHeader.length) {
+        //console.log("Not enough data, wait for more data");
+        this.#particalChunk = chunk;
+        return;
+      }
+      controller.enqueue(deserializePacket(fixedHeader, reader, this.options));
       firstMessage = false;
     }
   }
@@ -1703,22 +1752,28 @@ export class DeserializeStream {
 export type LowLevelConnection = {
   readable: ReadableStream<AllPacket>;
   writable: WritableStream<string | ArrayBufferView | ArrayBufferLike | Blob>;
+  // @ts-ignore
   connection: WebSocket | WebSocketStream | Deno.TcpConn;
 };
 
 /// You may also want to have a look at the Client
 export async function connectLowLevel(
   address: URL | string,
+  options?: {
+    alwaysTryToDecodePayloadAsUTF8String?: boolean;
+    alwaysReturnAsUint8Array?: boolean;
+  },
 ): Promise<LowLevelConnection> {
   const ts = new TransformStream<Uint8Array, AllPacket>(
-    new DeserializeStream(),
+    new DeserializeStream(options),
   );
 
   if (typeof address === "string") {
     address = new URL(address);
   }
   if (address.protocol === "ws:" || address.protocol === "wss:") {
-    if (WebSocketStream === undefined) {
+    // @ts-ignore
+    if (typeof WebSocketStream === "undefined") {
       const conn = streamifyWebSocket(
         address.toString(),
         "mqtt",
@@ -1729,6 +1784,7 @@ export async function connectLowLevel(
         connection: conn.conn,
       };
     }
+    // @ts-ignore
     const wss = new WebSocketStream(address.toString(), {
       protocols: ["mqtt"],
     });
@@ -1739,7 +1795,9 @@ export async function connectLowLevel(
       connection: wss,
     };
   }
-  if (typeof Deno !== undefined && address.protocol === "tcp:") {
+  // @ts-ignore
+  if (typeof Deno !== "undefined" && address.protocol === "tcp:") {
+    // @ts-ignore
     const conn = await Deno.connect({
       hostname: address.hostname,
       port: Number.parseInt(address.port),
@@ -1760,11 +1818,15 @@ export async function connectLowLevel(
 export type ClientProperties = {
   reconnectTime?: Milliseconds; // 0: no auto reconnect
   connectTimeout?: Milliseconds; // timeout if no CONNACK is received
+  alwaysTryToDecodePayloadAsUTF8String?: boolean;
+  alwaysReturnAsUint8Array?: boolean;
 };
 
 export const DefaultClientProperties: Required<ClientProperties> = {
   reconnectTime: 1_000 as Milliseconds,
   connectTimeout: 10_000 as Milliseconds,
+  alwaysTryToDecodePayloadAsUTF8String: false,
+  alwaysReturnAsUint8Array: false,
 };
 
 // Default Client implementation providing the following features
@@ -1796,7 +1858,12 @@ export class Client implements AsyncDisposable {
     await this.close();
   }
 
-  async open() {
+  get readable() {
+    // TODO: return a readable that is always valid even if the connection is closed
+    return this.#con!.readable;
+  }
+
+  open() {
     if (this.#messageHandlerPromise) {
       throw new Error("open was already called");
     }
@@ -1805,9 +1872,10 @@ export class Client implements AsyncDisposable {
   }
 
   async #handleMessages() {
+    const writer = new Writer();
     while (this.#active) {
       try {
-        this.#con = await connectLowLevel(this.address);
+        this.#con = await connectLowLevel(this.address, this.properties);
       } catch (e) {
         this.#onErrorHandler(e);
         if (this.#active) {
@@ -1818,10 +1886,43 @@ export class Client implements AsyncDisposable {
         }
         continue;
       }
-      this.#writable?.write(this.connectPacket);
+      this.#writable = this.#con.writable.getWriter();
+      this.#writable.write(
+        serializeConnectPacket(this.connectPacket ?? {}, writer),
+      );
       // wait until we receive the ConnAck
+      // TODO
 
       // keep the client id for reconnects
+      // TODO
+
+      // const [reader, writer] = [readable.getReader(), writable.getWriter()];
+      // printPacket(await reader.read());
+
+      // ping
+      //       await sleep(1000);
+
+      const sendPing = async () => {
+        try {
+          while (true) {
+            await this.#writable!.write(PingReqMessage);
+            await sleep(10000);
+          }
+        } catch (e) {
+          console.log("Write error", e);
+        }
+      };
+
+      // TODO: we should use a timer and cancel it if it is not required anymore.
+      sendPing();
+
+      // reader.releaseLock();
+      // for await (const packet of readable) {
+      //   mqtt.logPacket(packet);
+      // }
+
+      await sleep(10000);
+      // wait until reconnect
     }
   }
 
@@ -1832,8 +1933,8 @@ export class Client implements AsyncDisposable {
 
   // publish fails if offline
   async publish(
-    packet: PublishPacket,
-    options: { queueIfClientIsOffline?: boolean },
+    packet: MakeSerializePacketType<PublishPacket>,
+    options?: { queueIfClientIsOffline?: boolean },
   ) {
     const msg = serializePublishPacket(packet, this.#writer);
     if (packet.retain) {
@@ -1845,12 +1946,22 @@ export class Client implements AsyncDisposable {
         this.#outgoing.delete(packet.topic);
       }
     }
+    // TODO: handle the options
   }
 
-  async subscribe(
-    packet: SubscribePacket,
-    handler: (packet: PublishPacket) => void,
+  subscribe(
+    packet: MakeSerializePacketType<Omit<SubscribePacket, "packet_identifier">>,
   ) {
+    // TODO: should this block until the subscription is completed?
+    const p: Omit<SubscribePacket, "type"> & {
+      type?: SubscribePacket["type"];
+    } = structuredClone(packet);
+    p.packet_identifier = 10 as PacketIdentifier; // TODO: handle the packet identifier automatically
+    const subMsg = serializeSubscribePacket(p, this.#writer);
+    // TODO keep the logic from above?
+    this.#writable?.write(subMsg);
+
+    //printPacket(await reader.read());
   }
 
   async unsubscribe() {

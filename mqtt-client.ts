@@ -20,72 +20,38 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-import * as mqtt from "./mqtt/mod.ts";
 import { sleep } from "./helper/mod.ts";
+import * as mqtt from "./mqtt/mod.ts";
 
-const { readable, writable, connection } = await mqtt.connectLowLevel(
-  //"ws://127.0.0.1:1884",
-  "tcp://127.0.0.1:1883",
-);
-
-const [reader, writer] = [readable.getReader(), writable.getWriter()];
-
-function printPacket(
-  msg: ReadableStreamDefaultReadResult<mqtt.AllPacket>,
-) {
-  if (msg.done) {
-    console.log("Done");
-    return;
-  }
-  mqtt.logPacket(msg.value);
-}
-
-const w = new mqtt.Writer();
-const conMsg = mqtt.serializeConnectPacket(
+const client = new mqtt.Client(
+  "ws://127.0.0.1:1884",
   {
-    keepalive: 60 as mqtt.Seconds,
+    //keepalive: 60 as mqtt.Seconds,
     will: {
       topic: mqtt.asTopic("hi"),
     },
   },
-  w,
+  { alwaysTryToDecodePayloadAsUTF8String: true },
 );
-await writer.write(conMsg);
 
-printPacket(await reader.read());
+client.open();
 
-const subMsg = mqtt.serializeSubscribePacket({
-  packet_identifier: 2000 as mqtt.PacketIdentifier,
+await sleep(1000 as mqtt.Seconds);
+
+client.subscribe({
   subscriptions: [{ topic: mqtt.asTopicFilter("#") }],
-}, w);
-await writer.write(subMsg);
+  properties: { subscription_identifier: 5 },
+});
 
-printPacket(await reader.read());
+await sleep(1000 as mqtt.Seconds);
 
-const pubMsg = mqtt.serializePublishPacket({
+await client.publish({
   topic: mqtt.asTopic("hi"),
   payload: "wie gehts?",
   retain: true,
-}, w);
-await writer.write(pubMsg);
+});
 
-await sleep(1000);
-
-const sendPing = async () => {
-  try {
-    while (true) {
-      await writer.write(mqtt.PingReqMessage);
-      await sleep(10000);
-    }
-  } catch (e) {
-    console.log("Write error", e);
-  }
-};
-
-sendPing();
-
-reader.releaseLock();
-for await (const packet of readable) {
+for await (const packet of client.readable) {
   mqtt.logPacket(packet);
 }
 
