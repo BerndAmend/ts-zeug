@@ -107,7 +107,11 @@ export class DataReader {
   getDataReader(length: number): DataReader {
     const pos = this.pos;
     if (length > (pos + this.#bytes.length)) {
-      throw new Error("length exceeds the length of the buffer");
+      throw new Error(
+        `length (${length}) exceeds the length of the buffer (${
+          pos + this.#bytes.length
+        })`,
+      );
     }
     this.pos += length;
     return new DataReader(
