@@ -224,7 +224,13 @@ export class DataReader {
     if (this.#textDecoder === undefined) {
       this.#textDecoder = new TextDecoder();
     }
-    return this.#textDecoder.decode(this.getUint8Array(size));
+    const arr = this.getUint8Array(size);
+    try {
+      return this.#textDecoder.decode(arr);
+    } catch (e) {
+      this.pos -= size;
+      throw e;
+    }
   }
 
   pos = 0;
