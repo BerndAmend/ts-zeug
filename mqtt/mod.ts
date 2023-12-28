@@ -509,7 +509,7 @@ export type AllPacket =
   | DisconnectPacket
   | AuthPacket;
 
-export function logPacket(packet: AllPacket) {
+export function logPacket(packet: AllPacket | TransportDependendPackets) {
   if (packet.type === ControlPacketType.Disconnect) {
     console.log(
       ControlPacketType[packet.type],
@@ -519,7 +519,12 @@ export function logPacket(packet: AllPacket) {
       packet,
     );
   } else {
-    console.log(ControlPacketType[packet.type], packet);
+    console.log(
+      (packet.type < 100)
+        ? ControlPacketType[packet.type]
+        : TransportDependendPacketTypes[packet.type],
+      packet,
+    );
   }
 }
 
@@ -1829,18 +1834,26 @@ export const DefaultClientProperties: Required<ClientProperties> = {
   alwaysReturnAsUint8Array: false,
 };
 
+export enum TransportDependendPacketTypes {
+  ConnectionClosed = 100,
+  Error = 101,
+}
+
+export type TransportDependendPackets = {
+  type: TransportDependendPacketTypes.ConnectionClosed;
+} | {
+  type: TransportDependendPacketTypes.Error;
+};
+
+//   #outgoing = new Map<Topic, Uint8Array>();
+// #subscriptions = new Map<PacketIdentifier, SubscribePacket>();
+
 // Default Client implementation providing the following features
 //  - auto-reconnect
 //  - send pings
-//  - automatically resubscribe
-//  - automatically republish retained data
-//  - callback for disconnect/connect
-//  - use subscription id to efficiently dispatch them
 export class Client implements AsyncDisposable {
   #writer = new Writer();
   #writable: WritableStreamDefaultWriter | undefined;
-  #outgoing = new Map<Topic, Uint8Array>();
-  #subscriptions = new Map<PacketIdentifier, SubscribePacket>();
   #con: LowLevelConnection | undefined;
   #connectAck?: ConnAckPacket;
   #messageHandlerPromise: Promise<void> | undefined;
@@ -1852,17 +1865,19 @@ export class Client implements AsyncDisposable {
     public readonly connectPacket?: MakeSerializePacketType<ConnectPacket>,
     public readonly properties?: ClientProperties, // unset values are set to DefaultClientProperties
   ) {
+    this.open();
   }
 
   async [Symbol.asyncDispose]() {
     await this.close();
   }
 
-  get readable() {
+  get readable(): ReadableStream<AllPacket | TransportDependendPackets> {
     // TODO: return a readable that is always valid even if the connection is closed
     return this.#con!.readable;
   }
 
+  // this function is called automatically and is only required to reopen a connection after closing it
   open() {
     if (this.#messageHandlerPromise) {
       throw new Error("open was already called");
@@ -1926,30 +1941,24 @@ export class Client implements AsyncDisposable {
     }
   }
 
-  // on(type: "error"): void;
-  // on(type: "connect"): void;
-  // on(type: "disconnect"): void;
-  // on(type: string, handler => (...any) => void): void {}
-
   // publish fails if offline
   async publish(
     packet: MakeSerializePacketType<PublishPacket>,
-    options?: { queueIfClientIsOffline?: boolean },
   ) {
     const msg = serializePublishPacket(packet, this.#writer);
-    if (packet.retain) {
-      this.#outgoing.set(packet.topic, new Uint8Array(msg));
-    }
+    // if (packet.retain) {
+    //   this.#outgoing.set(packet.topic, new Uint8Array(msg));
+    // }
     if (this.#writable) {
       await this.#writable.write(msg);
-      if (packet.payload === undefined) {
-        this.#outgoing.delete(packet.topic);
-      }
+      // if (packet.payload === undefined) {
+      //   this.#outgoing.delete(packet.topic);
+      // }
     }
     // TODO: handle the options
   }
 
-  subscribe(
+  async subscribe(
     packet: MakeSerializePacketType<Omit<SubscribePacket, "packet_identifier">>,
   ) {
     // TODO: should this block until the subscription is completed?
@@ -1959,7 +1968,7 @@ export class Client implements AsyncDisposable {
     p.packet_identifier = 10 as PacketIdentifier; // TODO: handle the packet identifier automatically
     const subMsg = serializeSubscribePacket(p, this.#writer);
     // TODO keep the logic from above?
-    this.#writable?.write(subMsg);
+    await this.#writable?.write(subMsg);
 
     //printPacket(await reader.read());
   }

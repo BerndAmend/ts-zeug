@@ -34,25 +34,39 @@ const client = new mqtt.Client(
   { alwaysTryToDecodePayloadAsUTF8String: true },
 );
 
-client.open();
+await sleep(1000);
 
-await sleep(1000 as mqtt.Seconds);
-
-client.subscribe({
-  subscriptions: [{ topic: mqtt.asTopicFilter("#") }],
-  properties: { subscription_identifier: 5 },
-});
-
-await sleep(1000 as mqtt.Seconds);
-
-await client.publish({
-  topic: mqtt.asTopic("hi"),
-  payload: "wie gehts?",
-  retain: true,
-});
-
-for await (const packet of client.readable) {
-  mqtt.logPacket(packet);
+for await (const p of client.readable) {
+  mqtt.logPacket(p);
+  switch (p.type) {
+    case mqtt.ControlPacketType.ConnAck: {
+      console.log("Connected, perform the initial subscribe and publish");
+      await client.subscribe({
+        subscriptions: [{ topic: mqtt.asTopicFilter("#") }],
+        properties: { subscription_identifier: 5 },
+      });
+      await client.publish({
+        topic: mqtt.asTopic("hi"),
+        payload: "wie gehts?",
+        retain: true,
+      });
+      break;
+    }
+    case mqtt.ControlPacketType.Publish: {
+      console.log("Got data");
+      break;
+    }
+    case mqtt.ControlPacketType.Disconnect: {
+      // if the connection is closed unexpectly e.g. due to a network lose this message is not generated
+      break;
+    }
+    case mqtt.TransportDependendPacketTypes.ConnectionClosed: {
+      break;
+    }
+    case mqtt.TransportDependendPacketTypes.Error: {
+      break;
+    }
+  }
 }
 
 console.log("exiting");
