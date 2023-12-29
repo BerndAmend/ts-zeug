@@ -1847,6 +1847,40 @@ export type TransportDependendPackets = {
 
 //   #outgoing = new Map<Topic, Uint8Array>();
 // #subscriptions = new Map<PacketIdentifier, SubscribePacket>();
+// if (packet.retain) {
+//   this.#outgoing.set(packet.topic, new Uint8Array(msg));
+// }
+// if (packet.payload === undefined) {
+//   this.#outgoing.delete(packet.topic);
+// }
+
+export class ClientSource {
+  #controller?: ReadableStreamDefaultController;
+  constructor(readonly client: Client) {
+  }
+
+  start(controller: ReadableStreamDefaultController) {
+    this.#controller = controller;
+  }
+
+  enqueue(p: AllPacket | TransportDependendPackets) {
+    this.#controller!.enqueue(p);
+  }
+
+  close() {
+    this.#controller!.close();
+  }
+
+  error(err: Error) {
+    this.#controller!.error(err);
+  }
+
+  // required?
+  cancel() {
+    console.error("Cancel of the ClientSource was called");
+    this.client.close();
+  }
+}
 
 // Default Client implementation providing the following features
 //  - auto-reconnect
@@ -1857,8 +1891,20 @@ export class Client implements AsyncDisposable {
   #con: LowLevelConnection | undefined;
   #connectAck?: ConnAckPacket;
   #messageHandlerPromise: Promise<void> | undefined;
-  #active: boolean = false;
-  #onErrorHandler: (...data: any[]) => void = console.log;
+  #active = false;
+  #packetIdentifier: PacketIdentifier = 0 as PacketIdentifier;
+  #pingIntervalId?: number;
+  #source = new ClientSource(this);
+  #readable = new ReadableStream(this.#source);
+
+  // TODO: we need to keep track of currently used PacketIdentifiers
+  nextPacketIdentifier(): PacketIdentifier {
+    this.#packetIdentifier = this.#packetIdentifier + 1 as PacketIdentifier;
+    if (this.#packetIdentifier > 65535) {
+      this.#packetIdentifier = 1 as PacketIdentifier;
+    }
+    return this.#packetIdentifier;
+  }
 
   constructor(
     public readonly address: URL | string,
@@ -1873,8 +1919,7 @@ export class Client implements AsyncDisposable {
   }
 
   get readable(): ReadableStream<AllPacket | TransportDependendPackets> {
-    // TODO: return a readable that is always valid even if the connection is closed
-    return this.#con!.readable;
+    return this.#readable;
   }
 
   // this function is called automatically and is only required to reopen a connection after closing it
@@ -1892,7 +1937,7 @@ export class Client implements AsyncDisposable {
       try {
         this.#con = await connectLowLevel(this.address, this.properties);
       } catch (e) {
-        this.#onErrorHandler(e);
+        console.error(e);
         if (this.#active) {
           await sleep(
             this.properties?.reconnectTime ??
@@ -1905,39 +1950,58 @@ export class Client implements AsyncDisposable {
       this.#writable.write(
         serializeConnectPacket(this.connectPacket ?? {}, writer),
       );
-      // wait until we receive the ConnAck
-      // TODO
-
-      // keep the client id for reconnects
-      // TODO
-
-      // const [reader, writer] = [readable.getReader(), writable.getWriter()];
-      // printPacket(await reader.read());
 
       // ping
-      //       await sleep(1000);
-
-      const sendPing = async () => {
-        try {
-          while (true) {
+      if (this.connectPacket?.keepalive) {
+        this.#pingIntervalId = setInterval(async () => {
+          try {
             await this.#writable!.write(PingReqMessage);
-            await sleep(10000);
+          } catch (e) {
+            console.log("Write error", e);
           }
-        } catch (e) {
-          console.log("Write error", e);
+        }, this.connectPacket?.keepalive * 1000 / 3);
+      }
+
+      try {
+        for await (const p of this.#con.readable) {
+          switch (p.type) {
+            case ControlPacketType.ConnAck: {
+              // TODO
+              // keep the client id for reconnects
+              // terminate the connection if we receive unexpected data
+              break;
+            }
+            case ControlPacketType.SubAck: {
+              // TODO
+              break;
+            }
+            case ControlPacketType.UnsubAck: {
+              // TODO
+              break;
+            }
+          }
+
+          this.#source.enqueue(p);
         }
-      };
+      } catch (e) {
+        console.log("TODO", e);
+      }
 
-      // TODO: we should use a timer and cancel it if it is not required anymore.
-      sendPing();
+      this.#source.enqueue({
+        type: TransportDependendPacketTypes.ConnectionClosed,
+      });
 
-      // reader.releaseLock();
-      // for await (const packet of readable) {
-      //   mqtt.logPacket(packet);
-      // }
+      if (this.#pingIntervalId) {
+        clearInterval(this.#pingIntervalId);
+        this.#pingIntervalId = undefined;
+      }
 
-      await sleep(10000);
-      // wait until reconnect
+      try {
+        this.#con.connection.close();
+      } catch (e) {
+        console.log("TODO", e);
+      }
+      this.#con = undefined;
     }
   }
 
@@ -1946,34 +2010,52 @@ export class Client implements AsyncDisposable {
     packet: MakeSerializePacketType<PublishPacket>,
   ) {
     const msg = serializePublishPacket(packet, this.#writer);
-    // if (packet.retain) {
-    //   this.#outgoing.set(packet.topic, new Uint8Array(msg));
-    // }
-    if (this.#writable) {
-      await this.#writable.write(msg);
-      // if (packet.payload === undefined) {
-      //   this.#outgoing.delete(packet.topic);
-      // }
+    if (this.#writable === undefined) {
+      throw new Error("not connected");
     }
-    // TODO: handle the options
+
+    await this.#writable.write(msg);
   }
 
   async subscribe(
     packet: MakeSerializePacketType<Omit<SubscribePacket, "packet_identifier">>,
-  ) {
-    // TODO: should this block until the subscription is completed?
+  ): Promise<SubAckPacket> {
     const p: Omit<SubscribePacket, "type"> & {
       type?: SubscribePacket["type"];
     } = structuredClone(packet);
-    p.packet_identifier = 10 as PacketIdentifier; // TODO: handle the packet identifier automatically
+    p.packet_identifier = this.nextPacketIdentifier();
     const subMsg = serializeSubscribePacket(p, this.#writer);
-    // TODO keep the logic from above?
     await this.#writable?.write(subMsg);
 
-    //printPacket(await reader.read());
+    // todo: we need to return a promise that is fulfilled once the SubAck is received
+
+    return Promise.resolve({
+      type: ControlPacketType.SubAck,
+      packet_identifier: p.packet_identifier,
+      reason_codes: [SubAckReasonCode.Granted_QoS_0],
+    });
   }
 
-  async unsubscribe() {
+  async unsubscribe(
+    packet: MakeSerializePacketType<
+      Omit<UnsubscribePacket, "packet_identifier">
+    >,
+  ): Promise<UnsubAckPacket> {
+    const p: Omit<UnsubscribePacket, "type"> & {
+      type?: UnsubscribePacket["type"];
+    } = structuredClone(packet);
+    p.packet_identifier = this.nextPacketIdentifier();
+
+    const subMsg = serializeUnsubscribePacket(p, this.#writer);
+    await this.#writable?.write(subMsg);
+
+    // todo: we need to return a promise that is fulfilled once the SubAck is received
+
+    return Promise.resolve({
+      type: ControlPacketType.UnsubAck,
+      packet_identifier: p.packet_identifier,
+      reason_codes: [UnsubAckReasonCode.Success],
+    });
   }
 
   async close(disconnectPacket?: DisconnectPacket) {
@@ -1981,9 +2063,14 @@ export class Client implements AsyncDisposable {
       return;
     }
     this.#active = false;
+    if (this.#pingIntervalId) {
+      clearInterval(this.#pingIntervalId);
+      this.#pingIntervalId = undefined;
+    }
     await this.#writable.write(
       serializeDisconnectPacket(disconnectPacket ?? {}, this.#writer),
     );
+    // await Promise.race([sleep(2000, disconnectPacket)]);
     // await sleep(2000);
     // connection.close();
     // Wait for 2sec and just close the connection

@@ -24,9 +24,9 @@ import { sleep } from "./helper/mod.ts";
 import * as mqtt from "./mqtt/mod.ts";
 
 const client = new mqtt.Client(
-  "ws://127.0.0.1:1884",
+  "tcp://127.0.0.1:1883",
   {
-    //keepalive: 60 as mqtt.Seconds,
+    keepalive: 5 as mqtt.Seconds,
     will: {
       topic: mqtt.asTopic("hi"),
     },
@@ -34,14 +34,12 @@ const client = new mqtt.Client(
   { alwaysTryToDecodePayloadAsUTF8String: true },
 );
 
-await sleep(1000);
-
 for await (const p of client.readable) {
   mqtt.logPacket(p);
   switch (p.type) {
     case mqtt.ControlPacketType.ConnAck: {
       console.log("Connected, perform the initial subscribe and publish");
-      await client.subscribe({
+      const suback = await client.subscribe({
         subscriptions: [{ topic: mqtt.asTopicFilter("#") }],
         properties: { subscription_identifier: 5 },
       });
@@ -57,7 +55,7 @@ for await (const p of client.readable) {
       break;
     }
     case mqtt.ControlPacketType.Disconnect: {
-      // if the connection is closed unexpectly e.g. due to a network lose this message is not generated
+      // if the connection is closed unexpectedly e.g. due to a network lose this message is not generated
       break;
     }
     case mqtt.TransportDependendPacketTypes.ConnectionClosed: {
