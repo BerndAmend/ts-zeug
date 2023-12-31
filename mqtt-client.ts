@@ -20,25 +20,25 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-import { sleep } from "./helper/mod.ts";
-import * as mqtt from "./mqtt/mod.ts";
+import { mqtt } from "./mod.ts";
 
-const client = new mqtt.Client(
+await using client = new mqtt.Client(
   "tcp://127.0.0.1:1883",
   {
-    keepalive: 5 as mqtt.Seconds,
+    keepalive: 1 as mqtt.Seconds,
     will: {
       topic: mqtt.asTopic("hi"),
+      retain: true,
     },
   },
   { alwaysTryToDecodePayloadAsUTF8String: true },
 );
 
+// For Chrome, ... you have to use helper.streamAsyncIterator(client.readable)
 for await (const p of client.readable) {
-  mqtt.logPacket(p);
+  //mqtt.logPacket(p);
   switch (p.type) {
     case mqtt.ControlPacketType.ConnAck: {
-      console.log("Connected, perform the initial subscribe and publish");
       const suback = await client.subscribe({
         subscriptions: [{ topic: mqtt.asTopicFilter("#") }],
         properties: { subscription_identifier: 5 },
@@ -51,17 +51,26 @@ for await (const p of client.readable) {
       break;
     }
     case mqtt.ControlPacketType.Publish: {
-      console.log("Got data");
+      try {
+        console.log(
+          p.topic,
+          typeof p.payload === "string" ? JSON.parse(p.payload) : "undefined",
+        );
+      } catch (e) {
+        console.error("Couldn't parse", p.topic, p.payload, e);
+      }
       break;
     }
     case mqtt.ControlPacketType.Disconnect: {
-      // if the connection is closed unexpectedly e.g. due to a network lose this message is not generated
+      console.log("Disconnect", p);
       break;
     }
-    case mqtt.TransportDependendPacketTypes.ConnectionClosed: {
+    case mqtt.CustomPacketType.ConnectionClosed: {
+      console.log("ConnectionClosed", p);
       break;
     }
-    case mqtt.TransportDependendPacketTypes.Error: {
+    case mqtt.CustomPacketType.Error: {
+      console.error("Error", p);
       break;
     }
   }

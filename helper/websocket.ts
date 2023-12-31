@@ -9,7 +9,6 @@ export function streamifyWebSocket(
   return {
     readable: new ReadableStream(new WebSocketSource(ws)),
     writable: new WritableStream(new WebSocketSink(ws)),
-    conn: ws,
   };
 }
 

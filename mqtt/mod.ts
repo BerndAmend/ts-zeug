@@ -20,7 +20,13 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-import { type Branded, DataReader, DataWriter, sleep } from "../helper/mod.ts";
+import {
+  type Branded,
+  DataReader,
+  DataWriter,
+  deadline,
+  delay,
+} from "../helper/mod.ts";
 import { streamifyWebSocket } from "../helper/websocket.ts";
 
 //#region Types
@@ -509,7 +515,7 @@ export type AllPacket =
   | DisconnectPacket
   | AuthPacket;
 
-export function logPacket(packet: AllPacket | TransportDependendPackets) {
+export function logPacket(packet: AllPacket | CustomPackets) {
   if (packet.type === ControlPacketType.Disconnect) {
     console.log(
       ControlPacketType[packet.type],
@@ -522,7 +528,7 @@ export function logPacket(packet: AllPacket | TransportDependendPackets) {
     console.log(
       (packet.type < 100)
         ? ControlPacketType[packet.type]
-        : TransportDependendPacketTypes[packet.type],
+        : CustomPacketType[packet.type],
       packet,
     );
   }
@@ -670,8 +676,12 @@ export class Writer extends DataWriter {
   #internalWriter: Writer | undefined;
 }
 
+type OmitPacketType<T extends { type: ControlPacketType }> = Omit<T, "type"> & {
+  type?: T["type"];
+};
+
 type MakeSerializePacketType<T extends { type: ControlPacketType }> = Readonly<
-  Omit<T, "type"> & { type?: T["type"] }
+  OmitPacketType<T>
 >;
 
 // 3.1 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901033
@@ -1179,7 +1189,7 @@ export function serializeAuthPacket(
   return w.finalizeMessage(ControlPacketType.Auth, 0);
 }
 
-function serialize(packet: AllPacket, w: Writer) {
+export function serialize(packet: AllPacket, w: Writer) {
   switch (packet.type) {
     case ControlPacketType.Connect:
       return serializeConnectPacket(packet, w);
@@ -1746,7 +1756,13 @@ export class DeserializeStream {
         this.#particalChunk = chunk;
         return;
       }
-      controller.enqueue(deserializePacket(fixedHeader, reader, this.options));
+      try {
+        controller.enqueue(
+          deserializePacket(fixedHeader, reader, this.options),
+        );
+      } catch (e) {
+        controller.error(`Error while deserializing ${e}`);
+      }
       firstMessage = false;
     }
   }
@@ -1757,8 +1773,6 @@ export class DeserializeStream {
 export type LowLevelConnection = {
   readable: ReadableStream<AllPacket>;
   writable: WritableStream<string | ArrayBufferView | ArrayBufferLike | Blob>;
-  // @ts-ignore
-  connection: WebSocket | WebSocketStream | Deno.TcpConn;
 };
 
 /// You may also want to have a look at the Client
@@ -1778,7 +1792,7 @@ export async function connectLowLevel(
   }
   if (address.protocol === "ws:" || address.protocol === "wss:") {
     // @ts-ignore
-    if (typeof WebSocketStream === "undefined") {
+    if (typeof Deno !== undefined || typeof WebSocketStream === "undefined") { // The WebSocketStreams from Deno 1.39.1, behave different from the Browser implementations, lets wait for the big changes that are currently applied in Deno
       const conn = streamifyWebSocket(
         address.toString(),
         "mqtt",
@@ -1786,7 +1800,6 @@ export async function connectLowLevel(
       return {
         readable: conn.readable.pipeThrough(ts),
         writable: conn.writable,
-        connection: conn.conn,
       };
     }
     // @ts-ignore
@@ -1797,7 +1810,6 @@ export async function connectLowLevel(
     return {
       readable: conn.readable.pipeThrough(ts),
       writable: conn.writable,
-      connection: wss,
     };
   }
   // @ts-ignore
@@ -1814,7 +1826,6 @@ export async function connectLowLevel(
     return {
       readable: conn.readable.pipeThrough(ts),
       writable: conn.writable,
-      connection: conn,
     };
   }
   throw new Error(`Unsupported protocol ${address.protocol}`);
@@ -1825,6 +1836,7 @@ export type ClientProperties = {
   connectTimeout?: Milliseconds; // timeout if no CONNACK is received
   alwaysTryToDecodePayloadAsUTF8String?: boolean;
   alwaysReturnAsUint8Array?: boolean;
+  returnAllPackets?: boolean;
 };
 
 export const DefaultClientProperties: Required<ClientProperties> = {
@@ -1832,17 +1844,21 @@ export const DefaultClientProperties: Required<ClientProperties> = {
   connectTimeout: 10_000 as Milliseconds,
   alwaysTryToDecodePayloadAsUTF8String: false,
   alwaysReturnAsUint8Array: false,
+  returnAllPackets: false,
 };
 
-export enum TransportDependendPacketTypes {
+export enum CustomPacketType {
   ConnectionClosed = 100,
-  Error = 101,
+  FailedConnectionAttempt = 101,
+  Error = 200,
 }
 
-export type TransportDependendPackets = {
-  type: TransportDependendPacketTypes.ConnectionClosed;
-} | {
-  type: TransportDependendPacketTypes.Error;
+export type CustomPackets = {
+  type:
+    | CustomPacketType.ConnectionClosed
+    | CustomPacketType.Error
+    | CustomPacketType.FailedConnectionAttempt;
+  msg?: string | Error;
 };
 
 //   #outgoing = new Map<Topic, Uint8Array>();
@@ -1856,29 +1872,35 @@ export type TransportDependendPackets = {
 
 export class ClientSource {
   #controller?: ReadableStreamDefaultController;
+  #closed = false;
   constructor(readonly client: Client) {
   }
 
   start(controller: ReadableStreamDefaultController) {
     this.#controller = controller;
+    this.#closed = false;
   }
 
-  enqueue(p: AllPacket | TransportDependendPackets) {
-    this.#controller!.enqueue(p);
+  enqueue(p: AllPacket | CustomPackets) {
+    if (!this.#closed) {
+      this.#controller!.enqueue(p);
+    }
   }
 
   close() {
-    this.#controller!.close();
+    if (!this.#closed) {
+      this.#controller!.close();
+    }
   }
 
   error(err: Error) {
-    this.#controller!.error(err);
+    if (!this.#closed) {
+      this.#controller!.error(err);
+    }
   }
 
-  // required?
   cancel() {
-    console.error("Cancel of the ClientSource was called");
-    this.client.close();
+    this.#closed = true;
   }
 }
 
@@ -1888,7 +1910,7 @@ export class ClientSource {
 export class Client implements AsyncDisposable {
   #writer = new Writer();
   #writable: WritableStreamDefaultWriter | undefined;
-  #con: LowLevelConnection | undefined;
+  #connectPacket: OmitPacketType<ConnectPacket>;
   #connectAck?: ConnAckPacket;
   #messageHandlerPromise: Promise<void> | undefined;
   #active = false;
@@ -1896,6 +1918,11 @@ export class Client implements AsyncDisposable {
   #pingIntervalId?: number;
   #source = new ClientSource(this);
   #readable = new ReadableStream(this.#source);
+
+  #lastPingRespReceived = 0;
+
+  #closePromiseFulFill?: (value: { done: true; value: undefined }) => void;
+  #closePromiseFulFillPromise?: Promise<{ done: true; value: undefined }>;
 
   // TODO: we need to keep track of currently used PacketIdentifiers
   nextPacketIdentifier(): PacketIdentifier {
@@ -1908,17 +1935,22 @@ export class Client implements AsyncDisposable {
 
   constructor(
     public readonly address: URL | string,
-    public readonly connectPacket?: MakeSerializePacketType<ConnectPacket>,
+    connectPacket?: OmitPacketType<ConnectPacket>,
     public readonly properties?: ClientProperties, // unset values are set to DefaultClientProperties
   ) {
+    this.#connectPacket = connectPacket ?? {};
     this.open();
+  }
+
+  get connectPacket() {
+    return this.#connectPacket;
   }
 
   async [Symbol.asyncDispose]() {
     await this.close();
   }
 
-  get readable(): ReadableStream<AllPacket | TransportDependendPackets> {
+  get readable(): ReadableStream<AllPacket | CustomPackets> {
     return this.#readable;
   }
 
@@ -1927,69 +1959,185 @@ export class Client implements AsyncDisposable {
     if (this.#messageHandlerPromise) {
       throw new Error("open was already called");
     }
+    this.#closePromiseFulFillPromise = new Promise<
+      { done: true; value: undefined }
+    >(
+      (resolve) => {
+        this.#closePromiseFulFill = resolve;
+      },
+    );
     this.#active = true;
     this.#messageHandlerPromise = this.#handleMessages();
   }
 
   async #handleMessages() {
-    const writer = new Writer();
     while (this.#active) {
+      let con: LowLevelConnection;
       try {
-        this.#con = await connectLowLevel(this.address, this.properties);
+        con = await connectLowLevel(this.address, this.properties);
       } catch (e) {
-        console.error(e);
+        this.#source.enqueue({
+          type: CustomPacketType.FailedConnectionAttempt,
+          msg: e,
+        });
         if (this.#active) {
-          await sleep(
+          await delay(
             this.properties?.reconnectTime ??
               DefaultClientProperties.reconnectTime,
           );
         }
         continue;
       }
-      this.#writable = this.#con.writable.getWriter();
-      this.#writable.write(
-        serializeConnectPacket(this.connectPacket ?? {}, writer),
-      );
-
-      // ping
-      if (this.connectPacket?.keepalive) {
-        this.#pingIntervalId = setInterval(async () => {
-          try {
-            await this.#writable!.write(PingReqMessage);
-          } catch (e) {
-            console.log("Write error", e);
+      this.#writable = con.writable.getWriter();
+      const r = con.readable.getReader();
+      try {
+        this.#writable.write(
+          serializeConnectPacket(this.#connectPacket, this.#writer),
+        );
+        const d = await deadline(r.read(), 1000);
+        if (d && !d.done && d.value.type === ControlPacketType.ConnAck) {
+          this.#connectAck = d.value;
+          if (this.#connectPacket.client_id === undefined) {
+            const assigned_client_id = this.#connectAck?.properties
+              ?.assigned_client_id;
+            if (assigned_client_id === undefined) {
+              console.error(
+                "No client_id was provided and the server didn't assign one to us",
+              );
+            } else {
+              this.#connectPacket.client_id = assigned_client_id;
+            }
           }
-        }, this.connectPacket?.keepalive * 1000 / 3);
+          this.#source.enqueue(this.#connectAck);
+        } else {
+          r.releaseLock();
+          this.#writable.releaseLock();
+          await con.writable.close();
+          this.#source.enqueue({
+            type: CustomPacketType.FailedConnectionAttempt,
+            msg: "No ConnAck",
+          });
+          await delay(
+            this.properties?.reconnectTime ??
+              DefaultClientProperties.reconnectTime,
+          );
+          continue; // retry connecting
+        }
+      } catch (e) {
+        //console.log("other error, terminate connection", e);
+        try {
+          r.releaseLock();
+          this.#writable.releaseLock();
+          //await con.writable.close();
+        } catch (_e) {
+          //          console.error("Couldn't close connection", e);
+        }
+        this.#source.enqueue({
+          type: CustomPacketType.FailedConnectionAttempt,
+          msg: e,
+        });
+        await delay(
+          this.properties?.reconnectTime ??
+            DefaultClientProperties.reconnectTime,
+        );
+        continue; // retry connecting
+      }
+
+      let pingFailed: (value: { done: true; value: undefined }) => void;
+      const pingFailedPromise = new Promise<{ done: true; value: undefined }>(
+        (resolve) => {
+          pingFailed = resolve;
+        },
+      );
+      // ping
+      // 3.1.2.10 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901045
+      if (
+        this.#connectPacket.keepalive ||
+        this.#connectAck!.properties?.server_keep_alive
+      ) {
+        this.#lastPingRespReceived = Date.now();
+        let keep_alive = this.#connectAck.properties?.server_keep_alive ??
+          this.#connectPacket.keepalive;
+        if (this.#connectAck.properties?.server_keep_alive) {
+          console.log(
+            `Use the keep_alive time provided by the server server=${
+              this.#connectAck!.properties?.server_keep_alive
+            } client=${this.#connectPacket.keepalive}`,
+          );
+        }
+        if (keep_alive === undefined) {
+          keep_alive = 5 as Seconds;
+          console.error(
+            `BUG: the keepalive should be valid, default to 5 seconds server=${
+              this.#connectAck!.properties?.server_keep_alive
+            } client=${this.#connectPacket.keepalive}`,
+          );
+        }
+        this.#pingIntervalId = setInterval(async () => {
+          const msSinceLastPingResp = Date.now() - this.#lastPingRespReceived;
+          if (msSinceLastPingResp > keep_alive! * 1500) {
+            // console.log(
+            //   `PingResp was missing for ${msSinceLastPingResp} ms, terminate connection`,
+            // );
+          } else {
+            try {
+              await this.#writable!.write(PingReqMessage);
+              return;
+            } catch (e) {
+              console.log("Couldn't send ping, close connection", e);
+            }
+          }
+          pingFailed({ done: true, value: undefined });
+          try {
+            //r.releaseLock();
+            this.#writable!.releaseLock();
+            await con.writable.close();
+          } catch (e) {
+            console.log("Terminate connection in ping handler failed", e);
+          }
+        }, keep_alive * 1000 - 100); // 100 is randomly selected to ensure we stay below the keep_alive time
       }
 
       try {
-        for await (const p of this.#con.readable) {
+        dispatchLoop: while (true) {
+          // Read from the stream
+          const { done, value } = await Promise.race([
+            r.read(),
+            pingFailedPromise,
+            this.#closePromiseFulFillPromise!,
+          ]);
+          // Exit if we're done
+          if (done) break;
+          // Else yield the chunk
+
+          const p = value;
           switch (p.type) {
-            case ControlPacketType.ConnAck: {
-              // TODO
-              // keep the client id for reconnects
-              // terminate the connection if we receive unexpected data
-              break;
-            }
             case ControlPacketType.SubAck: {
               // TODO
-              break;
+              continue dispatchLoop;
             }
             case ControlPacketType.UnsubAck: {
               // TODO
+              continue dispatchLoop;
+            }
+
+            case ControlPacketType.PingResp: {
+              this.#lastPingRespReceived = Date.now();
+              continue dispatchLoop;
+            }
+
+            case ControlPacketType.Publish: {
               break;
             }
           }
 
           this.#source.enqueue(p);
         }
-      } catch (e) {
-        console.log("TODO", e);
+      } finally {
+        if (!r.closed) {
+          r.releaseLock();
+        }
       }
-
-      this.#source.enqueue({
-        type: TransportDependendPacketTypes.ConnectionClosed,
-      });
 
       if (this.#pingIntervalId) {
         clearInterval(this.#pingIntervalId);
@@ -1997,11 +2145,18 @@ export class Client implements AsyncDisposable {
       }
 
       try {
-        this.#con.connection.close();
-      } catch (e) {
-        console.log("TODO", e);
+        if (con.writable.locked) {
+          this.#writable.releaseLock();
+        }
+        this.#writable = undefined;
+        await con.writable.close();
+      } catch (_e) {
+        //console.log("TODO", e);
       }
-      this.#con = undefined;
+
+      this.#source.enqueue({
+        type: CustomPacketType.ConnectionClosed,
+      });
     }
   }
 
@@ -2067,13 +2222,14 @@ export class Client implements AsyncDisposable {
       clearInterval(this.#pingIntervalId);
       this.#pingIntervalId = undefined;
     }
-    await this.#writable.write(
-      serializeDisconnectPacket(disconnectPacket ?? {}, this.#writer),
-    );
-    // await Promise.race([sleep(2000, disconnectPacket)]);
-    // await sleep(2000);
-    // connection.close();
-    // Wait for 2sec and just close the connection
+    try {
+      await this.#writable.write(
+        serializeDisconnectPacket(disconnectPacket ?? {}, this.#writer),
+      );
+    } catch {
+      // The connection could already be closed
+    }
+    this.#closePromiseFulFill!({ done: true, value: undefined });
     await this.#messageHandlerPromise;
   }
 }
