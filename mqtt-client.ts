@@ -39,10 +39,12 @@ for await (const p of client.readable) {
   //mqtt.logPacket(p);
   switch (p.type) {
     case mqtt.ControlPacketType.ConnAck: {
-      const suback = await client.subscribe({
-        subscriptions: [{ topic: mqtt.asTopicFilter("#") }],
-        properties: { subscription_identifier: 5 },
-      });
+      mqtt.logPacket(
+        await client.subscribe({
+          subscriptions: [{ topic: mqtt.asTopicFilter("#") }],
+          properties: { subscription_identifier: 5 },
+        }),
+      );
       await client.publish({
         topic: mqtt.asTopic("hi"),
         payload: "wie gehts?",

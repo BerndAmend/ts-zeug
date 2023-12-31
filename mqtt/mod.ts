@@ -1836,7 +1836,6 @@ export type ClientProperties = {
   connectTimeout?: Milliseconds; // timeout if no CONNACK is received
   alwaysTryToDecodePayloadAsUTF8String?: boolean;
   alwaysReturnAsUint8Array?: boolean;
-  returnAllPackets?: boolean;
 };
 
 export const DefaultClientProperties: Required<ClientProperties> = {
@@ -1844,7 +1843,6 @@ export const DefaultClientProperties: Required<ClientProperties> = {
   connectTimeout: 10_000 as Milliseconds,
   alwaysTryToDecodePayloadAsUTF8String: false,
   alwaysReturnAsUint8Array: false,
-  returnAllPackets: false,
 };
 
 export enum CustomPacketType {
@@ -1914,7 +1912,6 @@ export class Client implements AsyncDisposable {
   #connectAck?: ConnAckPacket;
   #messageHandlerPromise: Promise<void> | undefined;
   #active = false;
-  #packetIdentifier: PacketIdentifier = 0 as PacketIdentifier;
   #pingIntervalId?: number;
   #source = new ClientSource(this);
   #readable = new ReadableStream(this.#source);
@@ -1924,13 +1921,40 @@ export class Client implements AsyncDisposable {
   #closePromiseFulFill?: (value: { done: true; value: undefined }) => void;
   #closePromiseFulFillPromise?: Promise<{ done: true; value: undefined }>;
 
-  // TODO: we need to keep track of currently used PacketIdentifiers
-  nextPacketIdentifier(): PacketIdentifier {
-    this.#packetIdentifier = this.#packetIdentifier + 1 as PacketIdentifier;
-    if (this.#packetIdentifier > 65535) {
-      this.#packetIdentifier = 1 as PacketIdentifier;
+  #pendingReplies: ({
+    resolve: (value: AllPacket) => void;
+    reject: (err: Error) => void;
+  } | undefined)[] = [];
+
+  #clearPendingReplies(err?: Error) {
+    for (const v of this.#pendingReplies) {
+      if (v !== undefined) {
+        v.reject(err ?? new Error("#clearPendingReplies"));
+      }
     }
-    return this.#packetIdentifier;
+    this.#pendingReplies = [{
+      resolve: (v) => {
+        console.error("The PacketIdentifier 0 shouldn't be used, but got ", v);
+      },
+      reject: (_) => {},
+    }];
+  }
+
+  #getPacketIdentifierHandler(): [PacketIdentifier, Promise<AllPacket>] {
+    let freePacketIdentifier = this.#pendingReplies.findIndex((e) =>
+      e === undefined
+    );
+    if (freePacketIdentifier === -1) {
+      freePacketIdentifier = this.#pendingReplies.length;
+    }
+
+    const promise = new Promise<AllPacket>(
+      (resolve, reject) => {
+        this.#pendingReplies[freePacketIdentifier] = { resolve, reject };
+      },
+    );
+
+    return [freePacketIdentifier as PacketIdentifier, promise];
   }
 
   constructor(
@@ -1938,6 +1962,7 @@ export class Client implements AsyncDisposable {
     connectPacket?: OmitPacketType<ConnectPacket>,
     public readonly properties?: ClientProperties, // unset values are set to DefaultClientProperties
   ) {
+    this.#clearPendingReplies();
     this.#connectPacket = connectPacket ?? {};
     this.open();
   }
@@ -2112,12 +2137,20 @@ export class Client implements AsyncDisposable {
 
           const p = value;
           switch (p.type) {
-            case ControlPacketType.SubAck: {
-              // TODO
-              continue dispatchLoop;
-            }
+            case ControlPacketType.SubAck:
             case ControlPacketType.UnsubAck: {
-              // TODO
+              const handler = this.#pendingReplies[p.packet_identifier];
+              this.#pendingReplies[p.packet_identifier] = undefined;
+              if (handler === undefined) {
+                console.error(
+                  "the handler for the PacketIdentifier ",
+                  p.packet_identifier,
+                  " was undefined",
+                );
+              } else {
+                handler.resolve(p);
+              }
+
               continue dispatchLoop;
             }
 
@@ -2154,6 +2187,8 @@ export class Client implements AsyncDisposable {
         //console.log("TODO", e);
       }
 
+      this.#clearPendingReplies(new Error("connection closed"));
+
       this.#source.enqueue({
         type: CustomPacketType.ConnectionClosed,
       });
@@ -2178,17 +2213,24 @@ export class Client implements AsyncDisposable {
     const p: Omit<SubscribePacket, "type"> & {
       type?: SubscribePacket["type"];
     } = structuredClone(packet);
-    p.packet_identifier = this.nextPacketIdentifier();
+    const [packetIdentifier, promise] = this.#getPacketIdentifierHandler();
+    p.packet_identifier = packetIdentifier;
     const subMsg = serializeSubscribePacket(p, this.#writer);
     await this.#writable?.write(subMsg);
 
-    // todo: we need to return a promise that is fulfilled once the SubAck is received
+    const reply = await promise;
 
-    return Promise.resolve({
-      type: ControlPacketType.SubAck,
-      packet_identifier: p.packet_identifier,
-      reason_codes: [SubAckReasonCode.Granted_QoS_0],
-    });
+    if (reply.type !== ControlPacketType.SubAck) {
+      console.error(
+        "received the wrong reply to request send=",
+        p,
+        " received=",
+        reply,
+      );
+      return Promise.reject("Something went wrong in the mqtt communication");
+    }
+
+    return reply;
   }
 
   async unsubscribe(
@@ -2199,18 +2241,25 @@ export class Client implements AsyncDisposable {
     const p: Omit<UnsubscribePacket, "type"> & {
       type?: UnsubscribePacket["type"];
     } = structuredClone(packet);
-    p.packet_identifier = this.nextPacketIdentifier();
+    const [packetIdentifier, promise] = this.#getPacketIdentifierHandler();
+    p.packet_identifier = packetIdentifier;
 
     const subMsg = serializeUnsubscribePacket(p, this.#writer);
     await this.#writable?.write(subMsg);
 
-    // todo: we need to return a promise that is fulfilled once the SubAck is received
+    const reply = await promise;
 
-    return Promise.resolve({
-      type: ControlPacketType.UnsubAck,
-      packet_identifier: p.packet_identifier,
-      reason_codes: [UnsubAckReasonCode.Success],
-    });
+    if (reply.type !== ControlPacketType.UnsubAck) {
+      console.error(
+        "received the wrong reply to request send=",
+        p,
+        " received=",
+        reply,
+      );
+      return Promise.reject("Something went wrong in the mqtt communication");
+    }
+
+    return reply;
   }
 
   async close(disconnectPacket?: DisconnectPacket) {
