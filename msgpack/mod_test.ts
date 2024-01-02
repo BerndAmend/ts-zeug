@@ -27,8 +27,11 @@ import { toHexString } from "../helper/mod.ts";
 Deno.test(function serializeTest() {
   const s = new Serializer();
 
-  // deno-lint-ignore no-explicit-any
-  const doit = (input: any, expected?: string, expectedOutput?: any) => {
+  const doit = (
+    input: unknown,
+    expected?: string,
+    expectedOutput?: unknown,
+  ) => {
     s.reset();
     s.add(input);
     const r = s.getBufferView();

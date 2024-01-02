@@ -425,7 +425,7 @@ export class Serializer {
 
 export function serialize(
   // deno-lint-ignore no-explicit-any
-  arg: any,
+  arg: unknown,
 ): ArrayBufferLike {
   const s = new Serializer();
   s.add(arg);
@@ -464,10 +464,8 @@ function deserializeTimestampExtension(data: Uint8Array): Date {
 
 export function deserialize(
   buffer: ArrayBufferLike,
-  // deno-lint-ignore no-explicit-any
-  extensionHandler?: (type: number, data: Uint8Array) => any,
-  // deno-lint-ignore no-explicit-any
-): any {
+  extensionHandler?: (type: number, data: Uint8Array) => unknown,
+): unknown {
   const reader = new DataReader(buffer);
 
   const handleExtension = (type: number, data: Uint8Array) => {
