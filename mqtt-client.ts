@@ -39,6 +39,10 @@ for await (const p of client.readable) {
   //mqtt.logPacket(p);
   switch (p.type) {
     case mqtt.ControlPacketType.ConnAck: {
+      if (p.connect_reason_code !== mqtt.ConnectReasonCode.Success) {
+        console.error("%cCouldn't connect", "color: red", p);
+        break;
+      }
       mqtt.logPacket(
         await client.subscribe({
           subscriptions: [{ topic: mqtt.asTopicFilter("#") }],
