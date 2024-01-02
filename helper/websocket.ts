@@ -59,7 +59,7 @@ export class WebSocketSink {
     return this._closeWS(1000);
   }
 
-  abort(reason?: any): Promise<void> {
+  abort(reason?: Error): Promise<void> {
     return this._closeWS(4000, reason && reason.message);
   }
 
