@@ -26,10 +26,10 @@ await using client = new mqtt.Client(
   "tcp://127.0.0.1:1883",
   {
     keepalive: 1 as mqtt.Seconds,
-    will: {
-      topic: mqtt.asTopic("hi"),
-      retain: true,
-    },
+    // will: {
+    //   topic: mqtt.asTopic("hi"),
+    //   retain: true,
+    // },
   },
   { alwaysTryToDecodePayloadAsUTF8String: true },
 );
@@ -45,41 +45,56 @@ for await (const p of client.readable) {
       }
       mqtt.logPacket(
         await client.subscribe({
-          subscriptions: [{ topic: mqtt.asTopicFilter("#") }],
+          subscriptions: [{
+            topic: mqtt.asTopicFilter("#"),
+            retain_as_published: true,
+          }],
           properties: { subscription_identifier: 5 },
         }),
       );
-      await client.publish({
-        topic: mqtt.asTopic("hi"),
-        payload: "wie gehts?",
-        retain: true,
-      });
+      // await client.publish({
+      //   topic: mqtt.asTopic("hi"),
+      //   payload: "wie gehts?",
+      //   retain: true,
+      // });
       break;
     }
     case mqtt.ControlPacketType.Publish: {
-      try {
+      if (p.payload === undefined) {
         console.log(
-          p.topic,
-          typeof p.payload === "string" ? JSON.parse(p.payload) : "undefined",
+          `%c${p.topic}`,
+          `${p.retain ? "color: blue;" : ""} font-weight: bold`,
         );
-      } catch (e) {
-        console.error("Couldn't parse", p.topic, p.payload, e);
+      } else {
+        try {
+          console.log(
+            `%c${p.topic}`,
+            `${p.retain ? "color: blue;" : ""} font-weight: bold`,
+            JSON.parse(p.payload as string),
+          );
+        } catch {
+          console.log(
+            `%c${p.topic}`,
+            `${p.retain ? "color: blue;" : ""} font-weight: bold`,
+            p.payload as string,
+          );
+        }
       }
       break;
     }
     case mqtt.ControlPacketType.Disconnect: {
-      console.log("Disconnect", p);
+      console.log("%cDisconnect", "color: red", p);
       break;
     }
     case mqtt.CustomPacketType.ConnectionClosed: {
-      console.log("ConnectionClosed", p);
+      console.log("%cConnectionClosed", "color: red", p);
       break;
     }
     case mqtt.CustomPacketType.Error: {
-      console.error("Error", p);
+      console.error("%cError", "color: red", p);
       break;
     }
   }
 }
 
-console.log("exiting");
+console.log("%cexiting", "color: red");
