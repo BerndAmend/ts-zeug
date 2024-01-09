@@ -9,7 +9,7 @@ contains
 
 ## MQTT Client example
 
-`deno`
+`deno run --allow-net mqtt-client.ts`
 
 ## Tests
 
