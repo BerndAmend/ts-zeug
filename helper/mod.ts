@@ -1,7 +1,9 @@
 // Copyright 2023-2024 Bernd Amend. MIT license.
-export * from "./abortable.ts";
-export * from "./deadline.ts";
-export * from "./delay.ts";
+export {
+  abortable,
+  deadline,
+  delay,
+} from "https://deno.land/std@0.211.0/async/mod.ts";
 
 export type Buffer =
   | ArrayLike<number>
