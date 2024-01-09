@@ -1,4 +1,5 @@
-// For environments that don't have a WebSocketStream we use the implementation from https://streams.spec.whatwg.org/#example-both
+// Copyright 2023-2024 Bernd Amend. BSD-3 license.
+/// For environments that don't have a WebSocketStream we use the implementation from https://streams.spec.whatwg.org/#example-both
 export function streamifyWebSocket(
   url: string | URL,
   protocols?: string | string[],
