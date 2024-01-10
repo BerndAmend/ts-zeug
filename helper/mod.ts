@@ -153,6 +153,7 @@ export class DataReader {
   getUint64(): number {
     const high = this.#view.getUint32(this.pos);
     const low = this.#view.getUint32(this.pos + 4);
+    this.pos += 8;
     return high * 0x1_0000_0000 + low;
   }
 
