@@ -655,13 +655,16 @@ export class Writer extends DataWriter {
   #internalWriter: Writer | undefined;
 }
 
-type OmitPacketType<T extends { type: ControlPacketType }> = Omit<T, "type"> & {
-  type?: T["type"];
-};
+export type OmitPacketType<T extends { type: ControlPacketType }> =
+  & Omit<T, "type">
+  & {
+    type?: T["type"];
+  };
 
-type MakeSerializePacketType<T extends { type: ControlPacketType }> = Readonly<
-  OmitPacketType<T>
->;
+export type MakeSerializePacketType<T extends { type: ControlPacketType }> =
+  Readonly<
+    OmitPacketType<T>
+  >;
 
 // 3.1 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901033
 export function serializeConnectPacket(
