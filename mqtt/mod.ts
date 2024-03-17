@@ -538,7 +538,7 @@ export class Writer extends DataWriter {
     this.pos = maxFixedHeaderSize;
   }
 
-  lengthVariableByteInteger(n: number) {
+  lengthVariableByteInteger(n: number): number {
     if (n === 0) {
       return 1;
     }
@@ -1084,7 +1084,7 @@ export function serializeUnsubAckPacket(
   return w.finalizeMessage(ControlPacketType.UnsubAck, 0);
 }
 
-export const PingReqMessage = (() => {
+export const PingReqMessage: Uint8Array = (() => {
   const writer = new Writer(
     {
       bufferSize: 5,
@@ -1094,7 +1094,7 @@ export const PingReqMessage = (() => {
   return writer.finalizeMessage(ControlPacketType.PingReq, 0);
 })();
 
-export const PingRespMessage = (() => {
+export const PingRespMessage: Uint8Array = (() => {
   const writer = new Writer(
     {
       bufferSize: 5,
@@ -1171,7 +1171,7 @@ export function serializeAuthPacket(
   return w.finalizeMessage(ControlPacketType.Auth, 0);
 }
 
-export function serialize(packet: AllPacket, w: Writer) {
+export function serialize(packet: AllPacket, w: Writer): Uint8Array {
   switch (packet.type) {
     case ControlPacketType.Connect:
       return serializeConnectPacket(packet, w);
@@ -1949,7 +1949,7 @@ export class Client implements AsyncDisposable {
     this.open();
   }
 
-  get connectPacket() {
+  get connectPacket(): OmitPacketType<ConnectPacket> {
     return this.#connectPacket;
   }
 

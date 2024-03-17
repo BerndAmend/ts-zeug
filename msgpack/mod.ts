@@ -85,7 +85,9 @@ export class Serializer {
     this.#writer = new DataWriter(options);
   }
 
-  getBufferView = () => this.#writer.getBufferView();
+  getBufferView(): Uint8Array {
+    return this.#writer.getBufferView();
+  }
 
   reset() {
     this.#writer.reset();
@@ -154,7 +156,7 @@ export class Serializer {
     }
   }
 
-  addFloat32(num: number) {
+  addFloat32(num: number): void {
     if (Number.isSafeInteger(num)) {
       return this.addInt(num);
     }
@@ -162,7 +164,7 @@ export class Serializer {
     this.#writer.addFloat32(num);
   }
 
-  addFloat64(num: number) {
+  addFloat64(num: number): void {
     if (Number.isSafeInteger(num)) {
       return this.addInt(num);
     }
@@ -320,7 +322,7 @@ export class Serializer {
       transferTypedArraysAsBinary: false,
       serializeNumbersAsFloats: false,
     },
-  ) {
+  ): void {
     switch (typeof arg) {
       case "string":
         return this.addString(arg);

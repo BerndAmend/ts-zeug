@@ -1,9 +1,5 @@
 // Copyright 2023-2024 Bernd Amend. MIT license.
-export {
-  abortable,
-  deadline,
-  delay,
-} from "https://deno.land/std@0.211.0/async/mod.ts";
+export { abortable, deadline, delay } from "@std/async";
 
 export type Buffer =
   | ArrayLike<number>
@@ -11,7 +7,7 @@ export type Buffer =
   | ArrayBufferView
   | ArrayBuffer;
 
-export declare const __brand: unique symbol;
+export const __brand: unique symbol = Symbol("__brand");
 export type Brand<B> = { [__brand]: B };
 export type Branded<T, B> = T & Brand<B>;
 
@@ -48,7 +44,7 @@ export function nanoid(t = 21): NanoID {
     ) as NanoID;
 }
 
-export function toHexString(arr: ArrayLike<number> | Iterable<number>) {
+export function toHexString(arr: ArrayLike<number> | Iterable<number>): string {
   return Array.from(arr, (byte) => {
     return `0${(byte & 0xFF).toString(16)}`.slice(-2);
   }).join("");
@@ -235,10 +231,11 @@ export class DataWriter {
     this.pos = 0;
   }
 
-  getBufferView = (begin?: number, end?: number) =>
-    this.bytes.subarray(begin ?? 0, end ?? this.pos);
+  getBufferView(begin?: number, end?: number): Uint8Array {
+    return this.bytes.subarray(begin ?? 0, end ?? this.pos);
+  }
 
-  ensureBufferSize(appendLength: number) {
+  ensureBufferSize(appendLength: number): void {
     if (!this.automaticallyExtendBuffer) {
       return;
     }
@@ -249,7 +246,7 @@ export class DataWriter {
     }
   }
 
-  #resizeBuffer(newSize: number) {
+  #resizeBuffer(newSize: number): void {
     const oldBytes = this.bytes;
 
     const buffer = new ArrayBuffer(newSize);
@@ -370,7 +367,9 @@ export class DataWriter {
 }
 
 // https://jakearchibald.com/2017/async-iterators-and-generators/#making-streams-iterate
-export async function* streamAsyncIterator<T>(stream: ReadableStream<T>) {
+export async function* streamAsyncIterator<T>(
+  stream: ReadableStream<T>,
+): AsyncGenerator<Awaited<T>, void> {
   // Get a lock on the stream
   const reader = stream.getReader();
 
