@@ -56,7 +56,6 @@ export class DataReader {
     byteOffset?: number,
     byteLength?: number,
   ) {
-    // TODO: implement handling of byteOffset and byteLength
     if (buffer instanceof Uint8Array) {
       if (byteOffset !== undefined || byteLength !== undefined) {
         throw new Error("not supported");
