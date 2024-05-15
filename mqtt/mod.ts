@@ -2192,11 +2192,11 @@ export class Client implements AsyncDisposable {
   async subscribe(
     packet: MakeSerializePacketType<Omit<SubscribePacket, "packet_identifier">>,
   ): Promise<SubAckPacket> {
-    const p: Omit<SubscribePacket, "type"> & {
-      type?: SubscribePacket["type"];
-    } = structuredClone(packet);
-    const [packetIdentifier, promise] = this.#getPacketIdentifierHandler();
-    p.packet_identifier = packetIdentifier;
+    const [packet_identifier, promise] = this.#getPacketIdentifierHandler();
+    const p: Omit<SubscribePacket, "type"> = {
+      ...structuredClone(packet),
+      packet_identifier,
+    };
     const subMsg = serializeSubscribePacket(p, this.#writer);
     await this.#writable?.write(subMsg);
 
@@ -2220,11 +2220,11 @@ export class Client implements AsyncDisposable {
       Omit<UnsubscribePacket, "packet_identifier">
     >,
   ): Promise<UnsubAckPacket> {
-    const p: Omit<UnsubscribePacket, "type"> & {
-      type?: UnsubscribePacket["type"];
-    } = structuredClone(packet);
-    const [packetIdentifier, promise] = this.#getPacketIdentifierHandler();
-    p.packet_identifier = packetIdentifier;
+    const [packet_identifier, promise] = this.#getPacketIdentifierHandler();
+    const p: Omit<UnsubscribePacket, "type"> = {
+      ...structuredClone(packet),
+      packet_identifier,
+    };
 
     const subMsg = serializeUnsubscribePacket(p, this.#writer);
     await this.#writable?.write(subMsg);
