@@ -490,19 +490,16 @@ export function deserialize(
 
     // Formats.fixmap:
     if ((format & 0b1111_0000) === Formats.fixmap_start) {
-      const length = (format as number) & 0b1111;
-      return handleMap(length);
+      return handleMap((format as number) & 0b1111);
     }
 
     // Formats.fixarray:
     if ((format & 0b1111_0000) === Formats.fixarray_start) {
-      const length = (format as number) & 0b1111;
-      return handleArray(length);
+      return handleArray((format as number) & 0b1111);
     }
 
     if ((format & 0b1010_0000) === Formats.fixstr_start) {
-      const length = format & 0b1_1111;
-      return reader.getUTF8String(length);
+      return reader.getUTF8String(format & 0b1_1111);
     }
 
     switch (format) {
@@ -514,18 +511,12 @@ export function deserialize(
         return false;
       case Formats.boolean_true:
         return true;
-      case Formats.bin_8: {
-        const length = reader.getUint8();
-        return reader.getUint8Array(length);
-      }
-      case Formats.bin_16: {
-        const length = reader.getUint16();
-        return reader.getUint8Array(length);
-      }
-      case Formats.bin_32: {
-        const length = reader.getUint32();
-        return reader.getUint8Array(length);
-      }
+      case Formats.bin_8:
+        return reader.getUint8Array(reader.getUint8());
+      case Formats.bin_16:
+        return reader.getUint8Array(reader.getUint16());
+      case Formats.bin_32:
+        return reader.getUint8Array(reader.getUint32());
       case Formats.ext_8: {
         const length = reader.getUint8();
         const type = reader.getUint8();
@@ -561,54 +552,30 @@ export function deserialize(
         return reader.getInt32();
       case Formats.int_64:
         return reader.getBigIntOrInt64();
-      case Formats.fixext_1: {
-        const type = reader.getUint8();
-        return handleExtension(type, reader.getUint8Array(1));
-      }
-      case Formats.fixext_2: {
-        const type = reader.getUint8();
-        return handleExtension(type, reader.getUint8Array(2));
-      }
-      case Formats.fixext_4: {
-        const type = reader.getUint8();
-        return handleExtension(type, reader.getUint8Array(4));
-      }
-      case Formats.fixext_8: {
-        const type = reader.getUint8();
-        return handleExtension(type, reader.getUint8Array(8));
-      }
-      case Formats.fixext_16: {
-        const type = reader.getUint8();
-        return handleExtension(type, reader.getUint8Array(16));
-      }
-      case Formats.str_8: {
-        const length = reader.getUint8();
-        return reader.getUTF8String(length);
-      }
-      case Formats.str_16: {
-        const length = reader.getUint16();
-        return reader.getUTF8String(length);
-      }
-      case Formats.str_32: {
-        const length = reader.getUint32();
-        return reader.getUTF8String(length);
-      }
-      case Formats.array_16: {
-        const length = reader.getUint16();
-        return handleArray(length);
-      }
-      case Formats.array_32: {
-        const length = reader.getUint32();
-        return handleArray(length);
-      }
-      case Formats.map_16: {
-        const length = reader.getUint16();
-        return handleMap(length);
-      }
-      case Formats.map_32: {
-        const length = reader.getUint32();
-        return handleMap(length);
-      }
+      case Formats.fixext_1:
+        return handleExtension(reader.getUint8(), reader.getUint8Array(1));
+      case Formats.fixext_2:
+        return handleExtension(reader.getUint8(), reader.getUint8Array(2));
+      case Formats.fixext_4:
+        return handleExtension(reader.getUint8(), reader.getUint8Array(4));
+      case Formats.fixext_8:
+        return handleExtension(reader.getUint8(), reader.getUint8Array(8));
+      case Formats.fixext_16:
+        return handleExtension(reader.getUint8(), reader.getUint8Array(16));
+      case Formats.str_8:
+        return reader.getUTF8String(reader.getUint8());
+      case Formats.str_16:
+        return reader.getUTF8String(reader.getUint16());
+      case Formats.str_32:
+        return reader.getUTF8String(reader.getUint32());
+      case Formats.array_16:
+        return handleArray(reader.getUint16());
+      case Formats.array_32:
+        return handleArray(reader.getUint32());
+      case Formats.map_16:
+        return handleMap(reader.getUint16());
+      case Formats.map_32:
+        return handleMap(reader.getUint32());
     }
   };
 
