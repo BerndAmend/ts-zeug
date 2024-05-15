@@ -5,5 +5,5 @@
   "tasks": {
     "dev": "deno run --watch mqtt-client.ts"
   },
-  "imports": { "@std/async": "jsr:@std/async@^0.220.1" }
+  "imports": { "@std/async": "jsr:@std/async@^0.224.0" }
 }
