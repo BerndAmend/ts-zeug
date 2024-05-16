@@ -65,7 +65,11 @@ export class DataReader {
         buffer.byteOffset,
         buffer.byteLength,
       );
-      this.#bytes = new Uint8Array(buffer.buffer);
+      this.#bytes = new Uint8Array(
+        buffer.buffer,
+        buffer.byteOffset,
+        buffer.byteLength,
+      );
     } else {
       this.#view = new DataView(buffer, byteOffset, byteLength);
       this.#bytes = new Uint8Array(buffer, byteOffset, byteLength);
