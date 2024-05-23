@@ -1846,7 +1846,8 @@ export type CustomPackets = {
 //   this.#outgoing.delete(packet.topic);
 // }
 
-export class ClientSource {
+export class ClientSource
+  implements UnderlyingSource<AllPacket | CustomPackets> {
   #controller?: ReadableStreamDefaultController;
   #closed = false;
   constructor() {
@@ -1892,7 +1893,7 @@ export class Client implements AsyncDisposable {
   #active = false;
   #pingIntervalId?: number;
   #source = new ClientSource();
-  #readable = new ReadableStream(this.#source);
+  #readable = new ReadableStream<AllPacket | CustomPackets>(this.#source);
 
   #lastPingRespReceived = 0;
 
