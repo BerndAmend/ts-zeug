@@ -1849,7 +1849,7 @@ export type CustomPackets = {
 export class ClientSource {
   #controller?: ReadableStreamDefaultController;
   #closed = false;
-  constructor(readonly client: Client) {
+  constructor() {
   }
 
   start(controller: ReadableStreamDefaultController) {
@@ -1891,7 +1891,7 @@ export class Client implements AsyncDisposable {
   #messageHandlerPromise: Promise<void> | undefined;
   #active = false;
   #pingIntervalId?: number;
-  #source = new ClientSource(this);
+  #source = new ClientSource();
   #readable = new ReadableStream(this.#source);
 
   #lastPingRespReceived = 0;
