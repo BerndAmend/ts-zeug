@@ -1978,11 +1978,18 @@ export class Client implements AsyncDisposable {
       let con: LowLevelConnection;
       try {
         con = await connectLowLevel(this.address, this.properties);
-      } catch (e) {
-        this.#source.enqueue({
-          type: CustomPacketType.FailedConnectionAttempt,
-          msg: e,
-        });
+      } catch (e: unknown) {
+        if (e instanceof Error) {
+          this.#source.enqueue({
+            type: CustomPacketType.FailedConnectionAttempt,
+            msg: e,
+          });
+        } else {
+          this.#source.enqueue({
+            type: CustomPacketType.FailedConnectionAttempt,
+            msg: new Error(`Unknown exception caught: ${e}`),
+          });
+        }
         if (this.#active) {
           await delay(
             this.properties?.reconnectTime ??
@@ -2026,7 +2033,7 @@ export class Client implements AsyncDisposable {
           );
           continue; // retry connecting
         }
-      } catch (e) {
+      } catch (e: unknown) {
         //console.log("other error, terminate connection", e);
         try {
           r.releaseLock();
@@ -2035,10 +2042,17 @@ export class Client implements AsyncDisposable {
         } catch (_e) {
           //          console.error("Couldn't close connection", e);
         }
-        this.#source.enqueue({
-          type: CustomPacketType.FailedConnectionAttempt,
-          msg: e,
-        });
+        if (e instanceof Error) {
+          this.#source.enqueue({
+            type: CustomPacketType.FailedConnectionAttempt,
+            msg: e,
+          });
+        } else {
+          this.#source.enqueue({
+            type: CustomPacketType.FailedConnectionAttempt,
+            msg: new Error(`Unknown exception caught: ${e}`),
+          });
+        }
         await delay(
           this.properties?.reconnectTime ??
             DefaultClientProperties.reconnectTime,
