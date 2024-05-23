@@ -1773,7 +1773,6 @@ export async function connectLowLevel(
     address = new URL(address);
   }
   if (address.protocol === "ws:" || address.protocol === "wss:") {
-    // @ts-ignore
     if (typeof Deno !== undefined || typeof WebSocketStream === "undefined") { // The WebSocketStreams from Deno 1.39.1, behave different from the Browser implementations, lets wait for the big changes that are currently applied in Deno
       const conn = streamifyWebSocket(
         address.toString(),
@@ -1784,7 +1783,6 @@ export async function connectLowLevel(
         writable: conn.writable,
       };
     }
-    // @ts-ignore
     const wss = new WebSocketStream(address.toString(), {
       protocols: ["mqtt"],
     });
@@ -1794,9 +1792,7 @@ export async function connectLowLevel(
       writable: conn.writable,
     };
   }
-  // @ts-ignore
   if (typeof Deno !== "undefined" && address.protocol === "tcp:") {
-    // @ts-ignore
     const conn = await Deno.connect({
       hostname: address.hostname,
       port: Number.parseInt(address.port),
