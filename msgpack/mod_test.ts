@@ -63,7 +63,7 @@ Deno.test(function serializeTest() {
     "dc00120102030405060708090a0b0c0d0e0fa568616c6c6fa577656c743f9601020304059601020304059701020304050696010203040506",
   );
   doit({ "foo": "bar" }, "81a3666f6fa3626172");
-  doit(Date.now());
+  doit(new Date());
 
   doit(
     {

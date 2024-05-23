@@ -380,6 +380,10 @@ export class Serializer {
           }
           return;
         }
+        if (arg instanceof Date) {
+          this.addDate(arg);
+          return;
+        }
         {
           const keys = Object.keys(arg);
           this.addMapHeader(keys.length);
@@ -518,17 +522,17 @@ export function deserialize(
         return reader.getUint8Array(reader.getUint32());
       case Formats.ext_8: {
         const length = reader.getUint8();
-        const type = reader.getUint8();
+        const type = reader.getInt8();
         return handleExtension(type, reader.getUint8Array(length));
       }
       case Formats.ext_16: {
         const length = reader.getUint16();
-        const type = reader.getUint8();
+        const type = reader.getInt8();
         return handleExtension(type, reader.getUint8Array(length));
       }
       case Formats.ext_32: {
         const length = reader.getUint32();
-        const type = reader.getUint8();
+        const type = reader.getInt8();
         return handleExtension(type, reader.getUint8Array(length));
       }
       case Formats.float_32:
@@ -552,15 +556,15 @@ export function deserialize(
       case Formats.int_64:
         return reader.getBigIntOrInt64();
       case Formats.fixext_1:
-        return handleExtension(reader.getUint8(), reader.getUint8Array(1));
+        return handleExtension(reader.getInt8(), reader.getUint8Array(1));
       case Formats.fixext_2:
-        return handleExtension(reader.getUint8(), reader.getUint8Array(2));
+        return handleExtension(reader.getInt8(), reader.getUint8Array(2));
       case Formats.fixext_4:
-        return handleExtension(reader.getUint8(), reader.getUint8Array(4));
+        return handleExtension(reader.getInt8(), reader.getUint8Array(4));
       case Formats.fixext_8:
-        return handleExtension(reader.getUint8(), reader.getUint8Array(8));
+        return handleExtension(reader.getInt8(), reader.getUint8Array(8));
       case Formats.fixext_16:
-        return handleExtension(reader.getUint8(), reader.getUint8Array(16));
+        return handleExtension(reader.getInt8(), reader.getUint8Array(16));
       case Formats.str_8:
         return reader.getUTF8String(reader.getUint8());
       case Formats.str_16:
