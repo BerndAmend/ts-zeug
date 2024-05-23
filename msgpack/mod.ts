@@ -403,7 +403,6 @@ export class Serializer {
 }
 
 export function serialize(
-  // deno-lint-ignore no-explicit-any
   arg: unknown,
 ): ArrayBufferLike {
   const s = new Serializer();
