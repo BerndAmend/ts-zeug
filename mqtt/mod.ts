@@ -1954,6 +1954,13 @@ export class Client implements AsyncDisposable {
     await this.close();
   }
 
+  // returns true if the client is connected to a broker
+  // Warning: even if this function returns true, a publish call
+  // may fail if the connection was closed in the meantime.
+  get isConnected(): boolean {
+    return this.#writable !== undefined;
+  }
+
   get readable(): ReadableStream<AllPacket | CustomPackets> {
     return this.#readable;
   }
