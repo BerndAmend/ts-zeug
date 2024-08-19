@@ -1377,6 +1377,92 @@ function readProperties(reader: DataReader): AllProperties | undefined {
   return ret;
 }
 
+function deserializeConnectPacket(
+  _fixedHeader: FixedHeader,
+  r: DataReader,
+): ConnectPacket {
+  const ret: ConnectPacket = {
+    type: ControlPacketType.Connect,
+  };
+
+  // 3.2.2.1 Connect Acknowledge Flags https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901077
+  const protocol_name = readUTF8String(r);
+  if (protocol_name !== "MQTT") {
+    throw new Error(`received the invalid protocol_name '${protocol_name}'`);
+  }
+
+  const protocol_version = r.getUint8();
+  if (protocol_version !== 5) {
+    throw new Error(
+      `received the invalid protocol_version '${protocol_version}'`,
+    );
+  }
+
+  ret.protocol_name = "MQTT";
+  ret.protocol_version = 5;
+
+  const connectFlags = r.getUint8();
+
+  const usernameFlag = (connectFlags & 0b1000_0000) !== 0;
+  const passwordFlag = (connectFlags & 0b0100_0000) !== 0;
+  const willRetainFlag = (connectFlags & 0b0010_0000) !== 0;
+  const willQoS = (connectFlags & 0b0001_1000) >> 3;
+  const willFlag = (connectFlags & 0b0000_0100) !== 0;
+  ret.clean_start = (connectFlags & 0b0000_0010) !== 0;
+
+  ret.keepalive = r.getUint16() as Seconds;
+
+  const props = readProperties(r);
+  if (props !== undefined) {
+    ret.properties = props;
+  }
+
+  // 3.1.3 Payload https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901058
+  ret.client_id = readUTF8String(r) as ClientID;
+
+  if (willFlag) {
+    const willProps = readProperties(r);
+
+    const topic = readUTF8String(r);
+
+    // How can we improve the payload handling?
+    let payload;
+    try {
+      payload = readUTF8String(r);
+    } catch {
+      payload = readBinaryData(r);
+    }
+
+    ret.will = {
+      qos: willQoS,
+      retain: willRetainFlag,
+      topic: topic as Topic,
+      payload,
+    };
+
+    if (willProps !== undefined) {
+      ret.will.properties = willProps;
+    }
+  }
+
+  if (usernameFlag) {
+    ret.username = readUTF8String(r);
+  }
+
+  if (passwordFlag) {
+    ret.password = readUTF8String(r);
+  }
+
+  // TODO: check if only the expected properties existed
+  // session_expiry_interval, receive_maximum, maximum_QoS, retain_available,
+  // maximum_packet_size, assigned_client_id, topic_alias_maximum, reason_string,
+  // user_properties, wildcard_subscription_available, subscription_identifiers_available,
+  // shared_subscription_available, server_keep_alive, response_information,
+  // server_reference, authentication_method, authentication_data
+
+  return ret;
+}
+
 // 3.2 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901074
 function deserializeConnAckPacket(
   _fixedHeader: FixedHeader,
@@ -1656,7 +1742,7 @@ export function deserializePacket(
     case ControlPacketType.Reserved:
       break;
     case ControlPacketType.Connect:
-      break;
+      return deserializeConnectPacket(fixedHeader, r);
     case ControlPacketType.ConnAck:
       return deserializeConnAckPacket(fixedHeader, r);
     case ControlPacketType.Publish:
