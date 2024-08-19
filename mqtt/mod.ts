@@ -1059,7 +1059,7 @@ export function serializeUnsubscribePacket(
     w.addUTF8String(f);
   }
 
-  return w.finalizeMessage(ControlPacketType.Unsubscribe, 0);
+  return w.finalizeMessage(ControlPacketType.Unsubscribe, 0b0010);
 }
 
 // 3.11 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901187
