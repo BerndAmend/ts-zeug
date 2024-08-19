@@ -775,9 +775,7 @@ export function serializeConnectPacket(
 
       tw.addUserProperties(p?.user_properties);
     });
-  }
 
-  if (packet.will !== undefined) {
     w.addUTF8String(packet.will.topic);
     if (packet.will.payload === undefined) {
       w.addUint16(0);
