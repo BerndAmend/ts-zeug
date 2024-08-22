@@ -1208,6 +1208,11 @@ function readVariableByteInteger(reader: DataReader): number;
 function readVariableByteInteger(
   reader: DataReader,
   gracefullyHandleIncompleteNumbers?: boolean,
+): number | undefined;
+
+function readVariableByteInteger(
+  reader: DataReader,
+  gracefullyHandleIncompleteNumbers?: boolean,
 ): number | undefined {
   let multiplier = 1;
   let value = 0;
@@ -1244,7 +1249,7 @@ export function readFixedHeader(
   reader: DataReader,
 ): FixedHeader | undefined {
   const d = reader.getUint8();
-  const len = readVariableByteInteger(reader);
+  const len = readVariableByteInteger(reader, true);
   if (len === undefined) {
     return undefined;
   }
