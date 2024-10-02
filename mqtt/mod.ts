@@ -564,7 +564,7 @@ export class Writer extends DataWriter {
       throw new Error(`data limit is 65535 got ${bin.length}`);
     }
     this.addUint16(bin.length);
-    this.addBinaryData(bin);
+    this.addArray(bin);
   }
 
   addUTF8String(str: string) {
