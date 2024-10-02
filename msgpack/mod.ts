@@ -408,7 +408,7 @@ export class Serializer {
 
 export function serialize(
   arg: unknown,
-): ArrayBufferLike {
+): Uint8Array {
   const s = new Serializer();
   s.add(arg);
   return s.getBufferView();
