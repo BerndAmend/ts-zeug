@@ -1255,7 +1255,7 @@ export function readFixedHeader(
   }
   return {
     type: d >> 4,
-    flags: d & 0xff,
+    flags: d & 0x0f,
     length: len,
   };
 }
