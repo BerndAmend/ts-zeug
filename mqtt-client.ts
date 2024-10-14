@@ -4,7 +4,7 @@ import { mqtt } from "./mod.ts";
 await using client = new mqtt.Client(
   "tcp://127.0.0.1:1883",
   {
-    keepalive: 1 as mqtt.Seconds,
+    keepalive: 10 as mqtt.Seconds,
     // will: {
     //   topic: mqtt.asTopic("hi"),
     //   retain: true,
