@@ -1918,12 +1918,20 @@ export enum CustomPacketType {
   Error = 200,
 }
 
+export enum ConnectionClosedReason {
+  ClosedLocally,
+  ClosedRemotely,
+  PingFailed,
+}
+
 export type CustomPackets = {
   type:
-    | CustomPacketType.ConnectionClosed
     | CustomPacketType.Error
     | CustomPacketType.FailedConnectionAttempt;
   msg?: string | Error;
+} | {
+  type: CustomPacketType.ConnectionClosed;
+  reason: ConnectionClosedReason;
 };
 
 //   #outgoing = new Map<Topic, Uint8Array>();
@@ -1986,8 +1994,12 @@ export class Client implements AsyncDisposable {
 
   #lastPingRespReceived = 0;
 
-  #closePromiseFulFill?: (value: { done: true; value: undefined }) => void;
-  #closePromiseFulFillPromise?: Promise<{ done: true; value: undefined }>;
+  #closePromiseFulFill?: (
+    value: { done: true; value: ConnectionClosedReason.ClosedLocally },
+  ) => void;
+  #closePromiseFulFillPromise?: Promise<
+    { done: true; value: ConnectionClosedReason.ClosedLocally }
+  >;
 
   #pendingReplies: ({
     resolve: (value: AllPacket) => void;
@@ -2059,9 +2071,7 @@ export class Client implements AsyncDisposable {
     if (this.#messageHandlerPromise) {
       throw new Error("open was already called");
     }
-    this.#closePromiseFulFillPromise = new Promise<
-      { done: true; value: undefined }
-    >(
+    this.#closePromiseFulFillPromise = new Promise(
       (resolve) => {
         this.#closePromiseFulFill = resolve;
       },
@@ -2157,8 +2167,15 @@ export class Client implements AsyncDisposable {
         continue; // retry connecting
       }
 
-      let pingFailed: (value: { done: true; value: undefined }) => void;
-      const pingFailedPromise = new Promise<{ done: true; value: undefined }>(
+      let pingFailed: (
+        value: {
+          done: true;
+          value: ConnectionClosedReason.PingFailed;
+        },
+      ) => void;
+      const pingFailedPromise = new Promise<
+        { done: true; value: ConnectionClosedReason.PingFailed }
+      >(
         (resolve) => {
           pingFailed = resolve;
         },
@@ -2201,7 +2218,10 @@ export class Client implements AsyncDisposable {
               console.log("Couldn't send ping, close connection", e);
             }
           }
-          pingFailed({ done: true, value: undefined });
+          pingFailed({
+            done: true,
+            value: ConnectionClosedReason.PingFailed,
+          });
           try {
             //r.releaseLock();
             if (this.#writable) {
@@ -2216,6 +2236,8 @@ export class Client implements AsyncDisposable {
         }, keep_alive * 1000 - 100); // 100 is randomly selected to ensure we stay below the keep_alive time
       }
 
+      let connectionClosedPacket: CustomPackets;
+
       try {
         dispatchLoop: while (true) {
           // Read from the stream
@@ -2225,7 +2247,16 @@ export class Client implements AsyncDisposable {
             this.#closePromiseFulFillPromise!,
           ]);
           // Exit if we're done
-          if (done) break;
+          if (done) {
+            connectionClosedPacket = {
+              type: CustomPacketType.ConnectionClosed,
+              reason: (value === ConnectionClosedReason.ClosedLocally ||
+                  value === ConnectionClosedReason.PingFailed)
+                ? value
+                : ConnectionClosedReason.ClosedRemotely,
+            };
+            break;
+          }
           // Else yield the chunk
 
           const p = value;
@@ -2277,14 +2308,12 @@ export class Client implements AsyncDisposable {
         this.#writable = undefined;
         await con.writable.close();
       } catch (_e) {
-        //console.log("TODO", e);
+        // console.log("TODO", _e);
       }
 
       this.#clearPendingReplies(new Error("connection closed"));
 
-      this.#source.enqueue({
-        type: CustomPacketType.ConnectionClosed,
-      });
+      this.#source.enqueue(connectionClosedPacket);
     }
   }
 
@@ -2371,7 +2400,10 @@ export class Client implements AsyncDisposable {
     } catch {
       // The connection could already be closed
     }
-    this.#closePromiseFulFill!({ done: true, value: undefined });
+    this.#closePromiseFulFill!({
+      done: true,
+      value: ConnectionClosedReason.ClosedLocally,
+    });
     await this.#messageHandlerPromise;
   }
 }
