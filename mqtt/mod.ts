@@ -1276,12 +1276,12 @@ function readProperties(reader: DataReader): AllProperties | undefined {
   }
 
   const length = readVariableByteInteger(reader);
-  const r = reader.getDataReader(length);
 
   if (length === 0) {
     return undefined;
   }
 
+  const r = reader.getDataReader(length);
   const ret: AllProperties = {};
 
   while (r.pos < length) {

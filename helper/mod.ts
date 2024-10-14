@@ -65,14 +65,8 @@ export class DataReader {
         buffer.byteOffset,
         buffer.byteLength,
       );
-      this.#bytes = new Uint8Array(
-        buffer.buffer,
-        buffer.byteOffset,
-        buffer.byteLength,
-      );
     } else {
       this.#view = new DataView(buffer, byteOffset, byteLength);
-      this.#bytes = new Uint8Array(buffer, byteOffset, byteLength);
     }
   }
 
@@ -86,11 +80,9 @@ export class DataReader {
 
   getDataReader(length: number): DataReader {
     const pos = this.pos;
-    if (length > (pos + this.#bytes.length)) {
+    if (pos + length > this.#view.byteLength) {
       throw new Error(
-        `length (${length}) exceeds the length of the buffer (${
-          pos + this.#bytes.length
-        })`,
+        `length (${length}) exceeds the length of the buffer (${this.#view.byteLength})`,
       );
     }
     this.pos += length;
@@ -196,7 +188,11 @@ export class DataReader {
   }
 
   getUint8Array(size: number): Uint8Array {
-    const v = this.#bytes.subarray(this.pos, this.pos + size);
+    const v = new Uint8Array(
+      this.#view.buffer,
+      (this.#view.byteOffset ?? 0) + this.pos,
+      size,
+    );
     this.pos += size;
     return v;
   }
@@ -216,7 +212,6 @@ export class DataReader {
 
   pos = 0;
   #view: DataView;
-  #bytes: Uint8Array;
   #textDecoder?: TextDecoder;
 }
 
