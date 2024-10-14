@@ -2204,8 +2204,12 @@ export class Client implements AsyncDisposable {
           pingFailed({ done: true, value: undefined });
           try {
             //r.releaseLock();
-            this.#writable!.releaseLock();
-            await con.writable.close();
+            if (this.#writable) {
+              this.#writable.releaseLock();
+            }
+            if (con.writable.locked) {
+              await con.writable.close();
+            }
           } catch (e) {
             console.log("Terminate connection in ping handler failed", e);
           }
