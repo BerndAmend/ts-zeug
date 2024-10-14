@@ -5,7 +5,7 @@
   "tasks": {
     "dev": "deno run --watch mqtt-client.ts"
   },
-  "imports": { "@std/async": "jsr:@std/async@^0.224.1" },
+  "imports": { "@std/async": "jsr:@std/async@^1.0.6" },
   "compilerOptions": {
     "strict": true,
     "useUnknownInCatchVariables": true,
