@@ -231,17 +231,22 @@ export function asTopicFilter(input: string): TopicFilter {
 }
 
 export function asClientID(input: string): ClientID {
-  // TODO: it doesn't really make sense to check the ClientID,
-  // when we don't know the supported charset of the server.
-  // const charSet =
-  //   "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  // for (const o of input) {
-  //   if (!charSet.includes(o)) {
-  //     throw new Error(
-  //       `Invalid ClientID: input '${input}' contains the invalid character '${o}' allowed characters '${charSet}'`,
-  //     );
-  //   }
-  // }
+  // We only forbid #,+ and / to ensure client IDs can be part of a topic
+  if (input.includes("#")) {
+    throw new Error(
+      `Invalid ClientID: cannot contain '#' input '${input}'`,
+    );
+  }
+  if (input.includes("+")) {
+    throw new Error(
+      `Invalid ClientID: cannot contain '+' input '${input}'`,
+    );
+  }
+  if (input.includes("/")) {
+    throw new Error(
+      `Invalid ClientID: cannot contain '+' input '${input}'`,
+    );
+  }
   return input as ClientID;
 }
 
