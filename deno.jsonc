@@ -1,6 +1,6 @@
 {
   "name": "@bernd/ts-zeug",
-  "version": "1.0.17",
+  "version": "1.0.18",
   "exports": "./mod.ts",
   "tasks": {
     "dev": "deno run --watch mqtt-client.ts"
