@@ -1859,7 +1859,7 @@ export async function connectLowLevel(
     alwaysReturnAsUint8Array?: boolean;
   },
 ): Promise<LowLevelConnection> {
-  const ts = new TransformStream<Uint8Array, AllPacket>(
+  const ts = new TransformStream<Uint8Array<ArrayBuffer>, AllPacket>(
     new DeserializeStream(options),
   );
 
