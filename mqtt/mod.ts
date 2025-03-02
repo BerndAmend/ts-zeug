@@ -2470,13 +2470,9 @@ export class Client implements AsyncDisposable {
     const reply = await promise;
 
     if (reply.type !== ControlPacketType.SubAck) {
-      console.error(
-        "received the wrong reply to request send=",
-        p,
-        " received=",
-        reply,
+      throw new Error(
+        `Didn't receive the expected SubAck packet send=${p} received=${reply}`,
       );
-      return Promise.reject("Something went wrong in the mqtt communication");
     }
 
     return reply;
@@ -2499,13 +2495,9 @@ export class Client implements AsyncDisposable {
     const reply = await promise;
 
     if (reply.type !== ControlPacketType.UnsubAck) {
-      console.error(
-        "received the wrong reply to request send=",
-        p,
-        " received=",
-        reply,
+      throw new Error(
+        `Didn't receive the expected UnsubAck packet send=${p} received=${reply}`,
       );
-      return Promise.reject("Something went wrong in the mqtt communication");
     }
 
     return reply;
