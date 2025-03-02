@@ -83,6 +83,8 @@ export class DataReader {
   }
 
   getDataReader(length: number): DataReader {
+    // TODO: we have to reduce the number of allocations
+    // can we return a existing DataReader or pass a DataReader?
     const pos = this.pos;
     if (pos + length > this.#view.byteLength) {
       throw new Error(
