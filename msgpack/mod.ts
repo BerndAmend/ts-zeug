@@ -1,5 +1,7 @@
-// Copyright 2023-2024 Bernd Amend. MIT license.
-// Implementation of msgpack as described in https://github.com/msgpack/msgpack/blob/master/spec.md
+/**
+ * Copyright 2023-2024 Bernd Amend. MIT license.
+ * Implementation of msgpack as described in https://github.com/msgpack/msgpack/blob/master/spec.md
+ */
 import { DataReader, DataWriter, intoUint8Array } from "../helper/mod.ts";
 
 const enum Formats {
@@ -218,7 +220,9 @@ export class Serializer {
     this.#writer.addArray(data);
   }
 
-  // the number of objects in the map will be 2*lenInObjects (key+value)
+  /**
+   * the number of objects in the map will be 2*lenInObjects (key+value)
+   */
   addMapHeader(lenInObjects: number) {
     if (lenInObjects < 16) {
       this.#addFormat(Formats.fixmap_start | lenInObjects);
@@ -414,7 +418,9 @@ export function serialize(
   return s.getBufferView();
 }
 
-// https://github.com/msgpack/msgpack/blob/master/spec.md#timestamp-extension-type
+/**
+ * https://github.com/msgpack/msgpack/blob/master/spec.md#timestamp-extension-type
+ */
 function deserializeTimestampExtension(data: Uint8Array): Date {
   const asDate = (sec: number, nsec: number) =>
     new Date(sec * 1e3 + nsec / 1e6);

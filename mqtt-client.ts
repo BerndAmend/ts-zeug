@@ -1,4 +1,6 @@
-// Copyright 2023-2024 Bernd Amend. MIT license.
+/**
+ * Copyright 2023-2024 Bernd Amend. MIT license.
+ */
 import { mqtt } from "./mod.ts";
 
 await using client = new mqtt.Client(

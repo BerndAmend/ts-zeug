@@ -1,4 +1,6 @@
-// Copyright 2023-2024 Bernd Amend. MIT license.
+/**
+ * Copyright 2023-2024 Bernd Amend. MIT license.
+ */
 import {
   type Branded,
   DataReader,
@@ -10,8 +12,26 @@ import { streamifyWebSocket } from "../helper/websocket.ts";
 
 //#region Types
 
-// 2.1.2 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901022
-// 4-bit unsigned integer
+/**
+ * 2.1.2 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901022
+ * 4-bit unsigned integer
+ *
+ * Connect:     C->S Connection Request flags=0
+ * ConnAck:     S->C Connect acknowledgment flags=0
+ * Publish:      *   Publish message flags=dup:1, qos:2, retain:1
+ * PubAck:       *   Publish acknowledgment (QoS 1) flags=0
+ * PubRec:       *   Publish received (QoS 2 delivery part 1) flags=0
+ * PubRel:       *   Publish release (QoS 2 delivery part 2) flags=2
+ * PubComp:      *   Publish complete (QoS 2 delivery part 3) flags=0
+ * Subscribe:   C->S Subscribe request flags=2
+ * SubAck:      S->C Subscribe acknowledgment flags=0
+ * Unsubscribe: C->S Unsubscribe request flags=2
+ * UnsubAck:    S->C Unsubscribe acknowledgment flags=0
+ * PingReq:     C->S PING request flags=0
+ * PingResp:    S->C PING response flags=0
+ * Disconnect:   *   Disconnect notification flags=0
+ * Auth:         *   Authentication exchange flags=0
+ */
 export enum ControlPacketType {
   Reserved,
   Connect, // C->S Connection Request flags=0
@@ -31,7 +51,9 @@ export enum ControlPacketType {
   Auth, // * Authentication exchange flags=0
 }
 
-// 3.3.1.2 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901103
+/**
+ * 3.3.1.2 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901103
+ */
 export enum QoS {
   At_most_once_delivery,
   At_least_once_delivery,
@@ -39,13 +61,17 @@ export enum QoS {
   Reserved,
 }
 
-// 3.3.2.3.2 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901111
+/**
+ * 3.3.2.3.2 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901111
+ */
 const enum PayloadFormatIndicator {
   Binary, // default
   UTF8,
 }
 
-// 2.2.2.2 https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc464547805
+/**
+ * 2.2.2.2 https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc464547805
+ */
 enum Property {
   Payload_Format_Indicator = 0x01, //	Byte	 	PUBLISH, Will Properties
   Message_Expiry_Interval = 0x02, //	Four Byte Integer	 	PUBLISH, Will Properties
@@ -76,7 +102,9 @@ enum Property {
   Shared_Subscription_Available = 0x2A, //	Byte	 	ConnAck
 }
 
-// 3.2.2.2 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901079
+/**
+ * 3.2.2.2 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901079
+ */
 export enum ConnectReasonCode {
   Success = 0x00,
   Unspecified_error = 0x80,
@@ -102,7 +130,9 @@ export enum ConnectReasonCode {
   Connection_rate_exceeded = 0x9F,
 }
 
-// 3.4.2.1 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901124
+/**
+ * 3.4.2.1 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901124
+ */
 export enum PubAckReasonCode {
   Success = 0x00,
   No_matching_subscribers = 0x10,
@@ -115,7 +145,9 @@ export enum PubAckReasonCode {
   Payload_format_invalid = 0x99,
 }
 
-// 3.9.3 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901178
+/**
+ * 3.9.3 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901178
+ */
 export enum SubAckReasonCode {
   Granted_QoS_0 = 0x00,
   Granted_QoS_1 = 0x01,
@@ -131,7 +163,9 @@ export enum SubAckReasonCode {
   Wildcard_Subscriptions_not_supported = 0xA2,
 }
 
-// 3.11.3 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901194
+/**
+ * 3.11.3 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901194
+ */
 export enum UnsubAckReasonCode {
   Success = 0x00,
   No_subscription_existed = 0x11,
@@ -142,7 +176,9 @@ export enum UnsubAckReasonCode {
   Packet_Identifier_in_use = 0x91,
 }
 
-// 3.14.2.1 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901208
+/**
+ * 3.14.2.1 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901208
+ */
 export enum DisconnectReasonCode {
   Normal_disconnection = 0x00,
   Disconnect_with_Will_Message = 0x04,
@@ -175,16 +211,23 @@ export enum DisconnectReasonCode {
   Wildcard_Subscriptions_not_supported = 0xA2,
 }
 
-// 3.15.2.1 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901220
+/**
+ * 3.15.2.1 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901220
+ */
 export enum AuthReasonCode {
   Success = 0x00,
   Continue_authentication = 0x18,
   Re_authenticate = 0x19,
 }
 
-export type ClientID = Branded<string, "ClientID">; // 3.1.3.1
+/**
+ * 3.1.3.1
+ */
+export type ClientID = Branded<string, "ClientID">;
 export type Topic = Branded<string, "Topic">;
-// similar to topic to also allows the characters # and ?
+/**
+ * similar to topic to also allows the characters # and ?
+ */
 export type TopicFilter = Branded<string, "TopicFilter">;
 export type Milliseconds = Branded<number, "Milliseconds">;
 export type Seconds = Branded<number, "Seconds">;
@@ -230,8 +273,11 @@ export function asTopicFilter(input: string): TopicFilter {
   return input as TopicFilter;
 }
 
+/**
+ * Throws if the input contains the characters #, + and /
+ * This implementation forbids these characters to ensure the ClientIDs can be used as part of a topic.
+ */
 export function asClientID(input: string): ClientID {
-  // We only forbid #,+ and / to ensure client IDs can be part of a topic
   if (input.includes("#")) {
     throw new Error(
       `Invalid ClientID: cannot contain '#' input '${input}'`,
@@ -250,7 +296,10 @@ export function asClientID(input: string): ClientID {
   return input as ClientID;
 }
 
-const maxFixedHeaderSize = 5; // 1 Byte + max size of a variable byte integer
+/**
+ * 1 Byte + max size of a variable byte integer
+ */
+const maxFixedHeaderSize = 5;
 
 export type FixedHeader = {
   type: ControlPacketType;
@@ -288,7 +337,9 @@ export type AllProperties = Partial<{
   shared_subscription_available: boolean; // 3.2.2.3.13 - undefined === true
 }>;
 
-// 3.1 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_CONNECT_%E2%80%93_Connection
+/**
+ * 3.1 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_CONNECT_%E2%80%93_Connection
+ */
 export type ConnectPacket = {
   type: ControlPacketType.Connect;
   protocol_name?: "MQTT"; // 3.1.2.1
@@ -326,7 +377,9 @@ export type ConnectPacket = {
   };
 };
 
-// 3.2 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_CONNACK_%E2%80%93_Connect
+/**
+ * 3.2 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_CONNACK_%E2%80%93_Connect
+ */
 export type ConnAckPacket = {
   type: ControlPacketType.ConnAck;
   session_present?: boolean; // 3.2.2.1.1 - defaults to false
@@ -352,7 +405,9 @@ export type ConnAckPacket = {
   };
 };
 
-// 3.3 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc384800410
+/**
+ * 3.3 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc384800410
+ */
 export type PublishPacket = {
   type: ControlPacketType.Publish;
   packet_identifier?: PacketIdentifier; // 3.3.2.2
@@ -399,7 +454,9 @@ export enum RetainHandling {
   Do_not_send_retained_messages_at_the_time_of_the_subscribe,
 }
 
-// 3.8 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc384800436
+/**
+ * 3.8 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc384800436
+ */
 export type SubscribePacket = {
   type: ControlPacketType.Subscribe;
   packet_identifier: PacketIdentifier; // 3.8.2
@@ -416,7 +473,9 @@ export type SubscribePacket = {
   };
 };
 
-// 3.9 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc384800441
+/**
+ * 3.9 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc384800441
+ */
 export type SubAckPacket = {
   type: ControlPacketType.SubAck;
   packet_identifier: PacketIdentifier; // 3.9.2
@@ -427,7 +486,9 @@ export type SubAckPacket = {
   };
 };
 
-// 3.10 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc384800445
+/**
+ * 3.10 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc384800445
+ */
 export type UnsubscribePacket = {
   type: ControlPacketType.Unsubscribe;
   packet_identifier: PacketIdentifier; // 3.10.2
@@ -437,7 +498,9 @@ export type UnsubscribePacket = {
   };
 };
 
-// 3.11 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc473023655
+/**
+ * 3.11 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc473023655
+ */
 export type UnsubAckPacket = {
   type: ControlPacketType.UnsubAck;
   packet_identifier: PacketIdentifier; // 3.11.2
@@ -448,17 +511,23 @@ export type UnsubAckPacket = {
   };
 };
 
-// 3.12 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc384800454
+/**
+ * 3.12 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc384800454
+ */
 export type PingReqPacket = {
   type: ControlPacketType.PingReq;
 };
 
-// 3.13 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc384800459
+/**
+ * 3.13 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc384800459
+ */
 export type PingRespPacket = {
   type: ControlPacketType.PingResp;
 };
 
-// 3.14 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc384800463
+/**
+ * 3.14 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc384800463
+ */
 export type DisconnectPacket = {
   type: ControlPacketType.Disconnect;
   reason_code?: DisconnectReasonCode; // 3.14.2.1
@@ -470,7 +539,9 @@ export type DisconnectPacket = {
   };
 };
 
-// 3.15 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc464548075
+/**
+ * 3.15 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc464548075
+ */
 export type AuthPacket = {
   type: ControlPacketType.Auth;
   reason_code?: AuthReasonCode; // 3.15.2.1
@@ -671,7 +742,9 @@ export type MakeSerializePacketType<T extends { type: ControlPacketType }> =
     OmitPacketType<T>
   >;
 
-// 3.1 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901033
+/**
+ * 3.1 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901033
+ */
 export function serializeConnectPacket(
   packet: MakeSerializePacketType<ConnectPacket>,
   w: Writer,
@@ -802,7 +875,9 @@ export function serializeConnectPacket(
   return w.finalizeMessage(ControlPacketType.Connect, 0);
 }
 
-// 3.2 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901074
+/**
+ * 3.2 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901074
+ */
 export function serializeConnAckPacket(
   packet: MakeSerializePacketType<ConnAckPacket>,
   w: Writer,
@@ -909,7 +984,9 @@ export function serializeConnAckPacket(
   return w.finalizeMessage(ControlPacketType.ConnAck, 0);
 }
 
-// 3.3 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901100
+/**
+ * 3.3 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901100
+ */
 export function serializePublishPacket(
   packet: MakeSerializePacketType<PublishPacket>,
   w: Writer,
@@ -985,7 +1062,9 @@ export function serializePublishPacket(
   return w.finalizeMessage(ControlPacketType.Publish, flags);
 }
 
-// 3.8 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901161
+/**
+ * 3.8 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901161
+ */
 export function serializeSubscribePacket(
   packet: MakeSerializePacketType<SubscribePacket>,
   w: Writer,
@@ -1020,7 +1099,9 @@ export function serializeSubscribePacket(
   return w.finalizeMessage(ControlPacketType.Subscribe, 0b10);
 }
 
-// 3.9 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901171
+/**
+ * 3.9 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901171
+ */
 export function serializeSubAckPacket(
   packet: MakeSerializePacketType<SubAckPacket>,
   w: Writer,
@@ -1042,7 +1123,9 @@ export function serializeSubAckPacket(
   return w.finalizeMessage(ControlPacketType.SubAck, 0);
 }
 
-// 3.10 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901179
+/**
+ * 3.10 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901179
+ */
 export function serializeUnsubscribePacket(
   packet: MakeSerializePacketType<UnsubscribePacket>,
   w: Writer,
@@ -1065,7 +1148,9 @@ export function serializeUnsubscribePacket(
   return w.finalizeMessage(ControlPacketType.Unsubscribe, 0b0010);
 }
 
-// 3.11 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901187
+/**
+ * 3.11 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901187
+ */
 export function serializeUnsubAckPacket(
   packet: MakeSerializePacketType<UnsubAckPacket>,
   w: Writer,
@@ -1107,7 +1192,9 @@ export const PingRespMessage: Uint8Array = (() => {
   return writer.finalizeMessage(ControlPacketType.PingResp, 0);
 })();
 
-// 3.14 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901205
+/**
+ * 3.14 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901205
+ */
 export function serializeDisconnectPacket(
   packet: MakeSerializePacketType<DisconnectPacket>,
   w: Writer,
@@ -1139,7 +1226,9 @@ export function serializeDisconnectPacket(
   return w.finalizeMessage(ControlPacketType.Disconnect, 0);
 }
 
-// 3.15 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901217
+/**
+ * 3.15 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901217
+ */
 export function serializeAuthPacket(
   packet: MakeSerializePacketType<AuthPacket>,
   w: Writer,
@@ -1249,7 +1338,9 @@ function readVariableByteInteger(
   return value;
 }
 
-// 2.1.1 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901021
+/**
+ * 2.1.1 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901021
+ */
 export function readFixedHeader(
   reader: DataReader,
 ): FixedHeader | undefined {
@@ -1473,7 +1564,9 @@ function deserializeConnectPacket(
   return ret;
 }
 
-// 3.2 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901074
+/**
+ * 3.2 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901074
+ */
 function deserializeConnAckPacket(
   _fixedHeader: FixedHeader,
   r: DataReader,
@@ -1501,7 +1594,9 @@ function deserializeConnAckPacket(
   return ret;
 }
 
-// 3.3 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901100
+/**
+ * 3.3 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901100
+ */
 function deserializePublishPacket(
   fixedHeader: FixedHeader,
   r: DataReader,
@@ -1561,7 +1656,9 @@ function deserializePublishPacket(
   return ret;
 }
 
-// 3.10 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901179
+/**
+ * 3.10 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901179
+ */
 function deserializeUnsubscribePacket(
   _fixedHeader: FixedHeader,
   r: DataReader,
@@ -1584,7 +1681,9 @@ function deserializeUnsubscribePacket(
   return ret;
 }
 
-// 3.8 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901161
+/**
+ * 3.8 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901161
+ */
 function deserializeSubscribePacket(
   _fixedHeader: FixedHeader,
   r: DataReader,
@@ -1648,7 +1747,9 @@ function deserializeSubscribePacket(
   return ret;
 }
 
-// 3.9 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901171
+/**
+ * 3.9 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901171
+ */
 function deserializeSubAckPacket(
   _fixedHeader: FixedHeader,
   r: DataReader,
@@ -1671,7 +1772,9 @@ function deserializeSubAckPacket(
   return ret;
 }
 
-// 3.11 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901187
+/**
+ * 3.11 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901187
+ */
 function deserializeUnsubAckPacket(
   _fixedHeader: FixedHeader,
   r: DataReader,
@@ -1694,7 +1797,9 @@ function deserializeUnsubAckPacket(
   return ret;
 }
 
-// 3.14 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901205
+/**
+ * 3.14 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901205
+ */
 export function deserializeDisconnectPacket(
   _fixedHeader: FixedHeader,
   r: DataReader,
@@ -1717,7 +1822,9 @@ export function deserializeDisconnectPacket(
   return ret;
 }
 
-// 3.15 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901217
+/**
+ * 3.15 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901217
+ */
 export function deserializeAuthPacket(
   _fixedHeader: FixedHeader,
   r: DataReader,
@@ -1787,7 +1894,9 @@ export function deserializePacket(
 //#endregion
 
 //#region Stream
-// https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901285
+/**
+ * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901285
+ */
 export class DeserializeStream {
   constructor(
     readonly options?: {
@@ -1828,7 +1937,7 @@ export class DeserializeStream {
       }
       // check if we received enough data
       if (reader.remainingSize < fixedHeader.length) {
-        //console.log("Not enough data, wait for more data");
+        // store the left over data
         this.#particalChunk = chunk;
         return;
       }
@@ -1851,7 +1960,9 @@ export type LowLevelConnection = {
   writable: WritableStream<string | ArrayBufferView | ArrayBufferLike | Blob>;
 };
 
-/// You may also want to have a look at the Client
+/**
+ * You may also want to have a look at the Client
+ */
 export async function connectLowLevel(
   address: URL | string,
   options?: {
@@ -1983,9 +2094,11 @@ export class ClientSource
   }
 }
 
-// Default Client implementation providing the following features
-//  - auto-reconnect
-//  - send pings
+/**
+ * Default Client implementation providing the following features
+ *  - auto-reconnect
+ *  - send pings
+ */
 export class Client implements AsyncDisposable {
   #writer = new Writer();
   #writable: WritableStreamDefaultWriter | undefined;
@@ -2042,10 +2155,13 @@ export class Client implements AsyncDisposable {
     return [freePacketIdentifier as PacketIdentifier, promise];
   }
 
+  /**
+   * @param properties Values that are not set are set to the default values.
+   */
   constructor(
     public readonly address: URL | string,
     connectPacket?: OmitPacketType<ConnectPacket>,
-    public readonly properties?: ClientProperties, // unset values are set to DefaultClientProperties
+    public readonly properties?: ClientProperties,
   ) {
     this.#clearPendingReplies();
     this.#connectPacket = connectPacket ?? {};
@@ -2060,9 +2176,11 @@ export class Client implements AsyncDisposable {
     await this.close();
   }
 
-  // returns true if the client is connected to a broker
-  // Warning: even if this function returns true, a publish call
-  // may fail if the connection was closed in the meantime.
+  /**
+   * Warning: even if this function returns true, a publish call
+   * may fail if the connection was closed in the meantime.
+   * @returns if the client is connected to a MQTT Server
+   */
   get isConnected(): boolean {
     return this.#writable !== undefined;
   }
@@ -2071,7 +2189,9 @@ export class Client implements AsyncDisposable {
     return this.#readable;
   }
 
-  // this function is called automatically and is only required to reopen a connection after closing it
+  /**
+   * this function is called automatically and is only required to reopen a connection after closing it
+   */
   open() {
     if (this.#messageHandlerPromise) {
       throw new Error("open was already called");
@@ -2146,7 +2266,6 @@ export class Client implements AsyncDisposable {
           continue; // retry connecting
         }
       } catch (e: unknown) {
-        //console.log("other error, terminate connection", e);
         try {
           r.releaseLock();
           this.#writable.releaseLock();
@@ -2322,7 +2441,10 @@ export class Client implements AsyncDisposable {
     }
   }
 
-  // publish fails if offline
+  /**
+   * fails if offline
+   * @throws
+   */
   async publish(
     packet: MakeSerializePacketType<PublishPacket>,
   ) {
@@ -2410,16 +2532,6 @@ export class Client implements AsyncDisposable {
       value: ConnectionClosedReason.ClosedLocally,
     });
     await this.#messageHandlerPromise;
-  }
-}
-
-// TODO: check how mosquitto matches subscriptions
-// https://github.dev/eclipse/mosquitto/blob/f762a3fd1ced66b6cd32d8dc137f0523708dac1f/lib/util_topic.c#L193-L194
-export class Broker implements Disposable {
-  constructor() {
-  }
-
-  [Symbol.dispose]() {
   }
 }
 

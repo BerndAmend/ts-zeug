@@ -1,4 +1,6 @@
-// Copyright 2023-2024 Bernd Amend. MIT license.
+/**
+ * Copyright 2023-2024 Bernd Amend. MIT license.
+ */
 export { abortable, deadline, delay } from "@std/async";
 
 export type Buffer =
@@ -25,7 +27,9 @@ export function intoUint8Array(
   }
 }
 
-/// based on the implementation from https://github.com/ai/nanoid
+/**
+ * based on the implementation from https://github.com/ai/nanoid
+ */
 export type NanoID = Branded<string, "NanoID">;
 export function nanoid(t = 21): NanoID {
   return crypto.getRandomValues(new Uint8Array(t))
@@ -364,7 +368,9 @@ export class DataWriter {
   protected automaticallyExtendBuffer: boolean;
 }
 
-// https://jakearchibald.com/2017/async-iterators-and-generators/#making-streams-iterate
+/**
+ * https://jakearchibald.com/2017/async-iterators-and-generators/#making-streams-iterate
+ */
 export async function* streamAsyncIterator<T>(
   stream: ReadableStream<T>,
 ): AsyncGenerator<Awaited<T>, void> {
