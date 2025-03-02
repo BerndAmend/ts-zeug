@@ -290,7 +290,7 @@ export function asClientID(input: string): ClientID {
   }
   if (input.includes("/")) {
     throw new Error(
-      `Invalid ClientID: cannot contain '+' input '${input}'`,
+      `Invalid ClientID: cannot contain '/' input '${input}'`,
     );
   }
   return input as ClientID;
