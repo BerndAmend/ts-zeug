@@ -1,7 +1,7 @@
 /**
  * Copyright 2023-2025 Bernd Amend. MIT license.
  */
-import { assertEquals } from "jsr:@std/assert@^1.0.11";
+import { assertEquals } from "@std/assert";
 import { deserialize, Serializer } from "./mod.ts";
 import { toHexString } from "../helper/mod.ts";
 
