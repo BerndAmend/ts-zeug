@@ -89,11 +89,11 @@ export class DataReader {
         buffer.byteOffset,
         buffer.byteLength,
       );
-    } else {
-      this.#buffer = buffer.#buffer;
+    } else { // buffer instanceof DataReader
+      this.#buffer = buffer.buffer;
       this.byteOffset = byteOffset + buffer.byteOffset;
       this.byteLength = byteLength;
-      this.#view = buffer.#view;
+      this.#view = buffer.view;
     }
   }
 
@@ -214,6 +214,14 @@ export class DataReader {
       );
     }
     this.#pos = value;
+  }
+
+  get buffer(): Uint8Array {
+    return this.#buffer;
+  }
+
+  get view(): DataView {
+    return this.#view;
   }
 
   #getReadPosition(byteLength: number): number {
