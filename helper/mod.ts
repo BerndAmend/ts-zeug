@@ -55,126 +55,118 @@ export function toHexString(arr: ArrayLike<number> | Iterable<number>): string {
 }
 
 export class DataReader {
+  /**
+   * Creates a new DataReader instance.
+   * @param buffer - The source buffer, can be a DataReader or Uint8Array.
+   * @param byteOffset - The offset in bytes from the start of the buffer.
+   *                     If a DataReader is passed, the pos is ignored, use getDataReader() instead.
+   * @param byteLength - The length in bytes to read from the buffer.
+   */
   constructor(
-    buffer: ArrayBuffer | SharedArrayBuffer | Uint8Array,
+    buffer: DataReader | Uint8Array,
     byteOffset?: number,
     byteLength?: number,
   ) {
+    byteOffset = byteOffset ?? 0;
+    byteLength = byteLength ?? buffer.byteLength;
+
+    if (byteOffset < 0 || byteLength < 0) {
+      throw new Error("byteOffset and byteLength must be non-negative");
+    }
+    if (
+      byteOffset + byteLength > buffer.byteLength
+    ) {
+      throw new Error(
+        `byteOffset (${byteOffset}) + byteLength (${byteLength}) exceeds buffer length (${buffer.byteLength})`,
+      );
+    }
     if (buffer instanceof Uint8Array) {
-      if (byteOffset !== undefined || byteLength !== undefined) {
-        throw new Error("not supported");
-      }
+      this.#buffer = buffer;
+      this.byteOffset = byteOffset;
+      this.byteLength = byteLength;
       this.#view = new DataView(
         buffer.buffer,
         buffer.byteOffset,
         buffer.byteLength,
       );
     } else {
-      this.#view = new DataView(buffer, byteOffset, byteLength);
+      this.#buffer = buffer.#buffer;
+      this.byteOffset = byteOffset + buffer.byteOffset;
+      this.byteLength = byteLength;
+      this.#view = buffer.#view;
     }
   }
 
   get remainingSize(): number {
-    return this.#view.byteLength - this.pos;
+    return this.byteLength - this.#pos;
   }
 
   get hasMoreData(): boolean {
-    return this.pos < this.#view.byteLength;
+    return this.#pos < this.byteLength;
   }
 
-  getDataReader(length: number): DataReader {
-    // TODO: we have to reduce the number of allocations
-    // can we return a existing DataReader or pass a DataReader?
-    const pos = this.pos;
-    if (pos + length > this.#view.byteLength) {
-      throw new Error(
-        `length (${length}) exceeds the length of the buffer (${this.#view.byteLength})`,
-      );
-    }
-    this.pos += length;
-    return new DataReader(
-      this.#view.buffer,
-      this.#view.byteOffset + pos,
-      length,
-    );
+  getDataReader(byteLength: number): DataReader {
+    const pos = this.#getReadPosition(byteLength);
+    return new DataReader(this, pos - this.byteOffset, byteLength);
   }
 
   getUint8(): number {
-    const v = this.#view.getUint8(this.pos);
-    this.pos += 1;
-    return v;
+    return this.#view.getUint8(this.#getReadPosition(1));
   }
 
   getInt8(): number {
-    const v = this.#view.getInt8(this.pos);
-    this.pos += 1;
-    return v;
+    return this.#view.getInt8(this.#getReadPosition(1));
   }
 
   getUint16(): number {
-    const v = this.#view.getUint16(this.pos);
-    this.pos += 2;
-    return v;
+    return this.#view.getUint16(this.#getReadPosition(2));
   }
 
   getInt16(): number {
-    const v = this.#view.getInt16(this.pos);
-    this.pos += 2;
-    return v;
+    return this.#view.getInt16(this.#getReadPosition(2));
   }
 
   getUint32(): number {
-    const v = this.#view.getUint32(this.pos);
-    this.pos += 4;
-    return v;
+    return this.#view.getUint32(this.#getReadPosition(4));
   }
 
   getInt32(): number {
-    const v = this.#view.getInt32(this.pos);
-    this.pos += 4;
-    return v;
+    return this.#view.getInt32(this.#getReadPosition(4));
   }
 
   getFloat32(): number {
-    const v = this.#view.getFloat32(this.pos);
-    this.pos += 4;
-    return v;
+    return this.#view.getFloat32(this.#getReadPosition(4));
   }
 
   getFloat64(): number {
-    const v = this.#view.getFloat64(this.pos);
-    this.pos += 8;
-    return v;
+    return this.#view.getFloat64(this.#getReadPosition(8));
   }
 
   getUint64(): number {
-    const high = this.#view.getUint32(this.pos);
-    const low = this.#view.getUint32(this.pos + 4);
-    this.pos += 8;
+    const pos = this.#getReadPosition(8);
+    const high = this.#view.getUint32(pos);
+    const low = this.#view.getUint32(pos + 4);
     return high * 0x1_0000_0000 + low;
   }
 
   getInt64(): number {
-    const high = this.#view.getInt32(this.pos);
-    const low = this.#view.getUint32(this.pos + 4);
-    this.pos += 8;
+    const pos = this.#getReadPosition(8);
+    const high = this.#view.getInt32(pos);
+    const low = this.#view.getUint32(pos + 4);
     return high * 0x1_0000_0000 + low;
   }
 
   getBigUint64(): bigint {
-    const v = this.#view.getBigUint64(this.pos);
-    this.pos += 8;
-    return v;
+    return this.#view.getBigUint64(this.#getReadPosition(8));
   }
 
   getBigInt64(): bigint {
-    const v = this.#view.getBigInt64(this.pos);
-    this.pos += 8;
-    return v;
+    return this.#view.getBigInt64(this.#getReadPosition(8));
   }
 
   getBigUintOrUint64(): number | bigint {
-    const high = this.#view.getUint32(this.pos);
+    const high = this.#view.getUint32(this.#getReadPosition(8));
+    this.#pos -= 8;
     if (high < 2 ** 21) {
       return this.getUint64();
     }
@@ -193,32 +185,68 @@ export class DataReader {
     return num;
   }
 
-  getUint8Array(size: number): Uint8Array {
-    const v = new Uint8Array(
-      this.#view.buffer,
-      (this.#view.byteOffset ?? 0) + this.pos,
-      size,
+  getUint8Array(byteLength: number): Uint8Array {
+    const pos = this.#getReadPosition(byteLength);
+    return this.#buffer.subarray(
+      pos,
+      this.byteOffset + this.#pos,
     );
-    this.pos += size;
-    return v;
   }
 
-  getUTF8String(size: number): string {
-    if (this.#textDecoder === undefined) {
-      this.#textDecoder = new TextDecoder();
-    }
-    const arr = this.getUint8Array(size);
+  getUTF8String(byteLength: number): string {
+    const arr = this.getUint8Array(byteLength);
     try {
-      return this.#textDecoder.decode(arr);
+      return DataReader.textDecoder.decode(arr);
     } catch (e) {
-      this.pos -= size;
+      this.#pos -= byteLength;
       throw e;
     }
   }
 
-  pos = 0;
+  get pos(): number {
+    return this.#pos;
+  }
+
+  set pos(value: number) {
+    if (value < 0 || value > this.byteLength) {
+      throw new Error(
+        `pos (${value}) must be between 0 and ${this.byteLength}`,
+      );
+    }
+    this.#pos = value;
+  }
+
+  #getReadPosition(byteLength: number): number {
+    if (this.#pos + byteLength > this.byteLength) {
+      throw new Error(
+        `length (${byteLength}) exceeds the remaining size of the buffer (${
+          this.byteLength - this.#pos
+        })`,
+      );
+    }
+    const pos = this.#pos;
+    this.#pos += byteLength;
+    return this.byteOffset + pos;
+  }
+
+  #pos = 0;
+  readonly byteLength: number;
+  readonly byteOffset: number;
+  /**
+   * If a DataReader is created from another DataReader, this will be the original buffer.
+   * If a DataReader is created from a Uint8Array, this will be the same input Uint8Array.
+   */
+  #buffer: Uint8Array;
+  /**
+   * If a DataReader is created from another DataReader, this will be the original DataView.
+   * If a DataReader is created from a Uint8Array, this will be a new DataView of the same buffer.
+   */
   #view: DataView;
-  #textDecoder?: TextDecoder;
+  /**
+   * A TextDecoder instance for UTF-8 string decoding.
+   * This is a static property to avoid creating a new instance for every DataReader.
+   */
+  static textDecoder: TextDecoder = new TextDecoder();
 }
 
 export class DataWriter {

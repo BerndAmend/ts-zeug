@@ -421,12 +421,11 @@ export function serialize(
 /**
  * https://github.com/msgpack/msgpack/blob/master/spec.md#timestamp-extension-type
  */
-function deserializeTimestampExtension(data: Uint8Array): Date {
+function deserializeTimestampExtension(reader: DataReader): Date {
   const asDate = (sec: number, nsec: number) =>
     new Date(sec * 1e3 + nsec / 1e6);
-  const reader = new DataReader(data);
 
-  switch (data.byteLength) {
+  switch (reader.remainingSize) {
     case 4: {
       const sec = reader.getUint32();
       return asDate(sec, 0);
@@ -445,25 +444,25 @@ function deserializeTimestampExtension(data: Uint8Array): Date {
     }
     default:
       throw new Error(
-        `Unexpected timestamp data size (expected [4, 8, 12]) got ${data.length}`,
+        `Unexpected timestamp data size (expected [4, 8, 12]) got ${reader.remainingSize}`,
       );
   }
 }
 
 export function deserialize(
-  buffer: ArrayBuffer | SharedArrayBuffer | Uint8Array,
-  extensionHandler?: (type: number, data: Uint8Array) => unknown,
+  buffer: DataReader | Uint8Array,
+  extensionHandler?: (type: number, data: DataReader) => unknown,
 ): unknown[] {
-  const reader = new DataReader(buffer);
+  const reader = buffer instanceof DataReader ? buffer : new DataReader(buffer);
 
-  const handleExtension = (type: number, data: Uint8Array) => {
+  const handleExtension = (type: number, reader: DataReader) => {
     if (type === Extensions.TimeStamp) {
-      return deserializeTimestampExtension(data);
+      return deserializeTimestampExtension(reader);
     }
     if (extensionHandler === undefined) {
       throw new Error(`cannot handle unknown extension ${type}`);
     }
-    return extensionHandler(type, data);
+    return extensionHandler(type, reader);
   };
 
   const handleArray = (length: number) => {
@@ -529,17 +528,17 @@ export function deserialize(
       case Formats.ext_8: {
         const length = reader.getUint8();
         const type = reader.getInt8();
-        return handleExtension(type, reader.getUint8Array(length));
+        return handleExtension(type, reader.getDataReader(length));
       }
       case Formats.ext_16: {
         const length = reader.getUint16();
         const type = reader.getInt8();
-        return handleExtension(type, reader.getUint8Array(length));
+        return handleExtension(type, reader.getDataReader(length));
       }
       case Formats.ext_32: {
         const length = reader.getUint32();
         const type = reader.getInt8();
-        return handleExtension(type, reader.getUint8Array(length));
+        return handleExtension(type, reader.getDataReader(length));
       }
       case Formats.float_32:
         return reader.getFloat32();
@@ -562,15 +561,15 @@ export function deserialize(
       case Formats.int_64:
         return reader.getBigIntOrInt64();
       case Formats.fixext_1:
-        return handleExtension(reader.getInt8(), reader.getUint8Array(1));
+        return handleExtension(reader.getInt8(), reader.getDataReader(1));
       case Formats.fixext_2:
-        return handleExtension(reader.getInt8(), reader.getUint8Array(2));
+        return handleExtension(reader.getInt8(), reader.getDataReader(2));
       case Formats.fixext_4:
-        return handleExtension(reader.getInt8(), reader.getUint8Array(4));
+        return handleExtension(reader.getInt8(), reader.getDataReader(4));
       case Formats.fixext_8:
-        return handleExtension(reader.getInt8(), reader.getUint8Array(8));
+        return handleExtension(reader.getInt8(), reader.getDataReader(8));
       case Formats.fixext_16:
-        return handleExtension(reader.getInt8(), reader.getUint8Array(16));
+        return handleExtension(reader.getInt8(), reader.getDataReader(16));
       case Formats.str_8:
         return reader.getUTF8String(reader.getUint8());
       case Formats.str_16:
