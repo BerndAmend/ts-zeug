@@ -1924,7 +1924,9 @@ export class DeserializeStream {
     while (reader.hasMoreData) {
       const pos = reader.pos;
       const fixedHeader = readFixedHeader(reader);
-      if (fixedHeader === undefined) {
+      if (
+        fixedHeader === undefined || reader.remainingSize < fixedHeader.length
+      ) {
         // incomplete mqtt packet, decode and handle the data the next time we receive more data
         if (firstMessage) {
           this.#particalChunk = chunk;
@@ -1933,12 +1935,6 @@ export class DeserializeStream {
           reader.pos = pos;
           this.#particalChunk = reader.getUint8Array(reader.remainingSize);
         }
-        return;
-      }
-      // check if we received enough data
-      if (reader.remainingSize < fixedHeader.length) {
-        // store the left over data
-        this.#particalChunk = chunk;
         return;
       }
       try {
