@@ -63,12 +63,12 @@ export class DataReader {
    * @param byteLength - The length in bytes to read from the buffer.
    */
   constructor(
-    buffer: DataReader | Uint8Array,
+    buffer: DataReader | Uint8Array | ArrayBuffer,
     byteOffset?: number,
     byteLength?: number,
   ) {
-    byteOffset = byteOffset ?? 0;
-    byteLength = byteLength ?? buffer.byteLength;
+    byteOffset ??= 0;
+    byteLength ??= buffer.byteLength;
 
     if (byteOffset < 0 || byteLength < 0) {
       throw new Error("byteOffset and byteLength must be non-negative");
@@ -80,20 +80,20 @@ export class DataReader {
         `byteOffset (${byteOffset}) + byteLength (${byteLength}) exceeds buffer length (${buffer.byteLength})`,
       );
     }
-    if (buffer instanceof Uint8Array) {
-      this.#buffer = buffer;
+    if (buffer instanceof DataReader) {
+      this.#buffer = buffer.#buffer;
+      this.byteOffset = byteOffset + buffer.byteOffset;
+      this.byteLength = byteLength;
+      this.#view = buffer.#view;
+    } else {
+      this.#buffer = intoUint8Array(buffer);
       this.byteOffset = byteOffset;
       this.byteLength = byteLength;
       this.#view = new DataView(
-        buffer.buffer,
-        buffer.byteOffset,
-        buffer.byteLength,
+        this.#buffer.buffer,
+        this.#buffer.byteOffset,
+        this.#buffer.byteLength,
       );
-    } else { // buffer instanceof DataReader
-      this.#buffer = buffer.buffer;
-      this.byteOffset = byteOffset + buffer.byteOffset;
-      this.byteLength = byteLength;
-      this.#view = buffer.view;
     }
   }
 
@@ -214,14 +214,6 @@ export class DataReader {
       );
     }
     this.#pos = value;
-  }
-
-  get buffer(): Uint8Array {
-    return this.#buffer;
-  }
-
-  get view(): DataView {
-    return this.#view;
   }
 
   #getReadPosition(byteLength: number): number {
