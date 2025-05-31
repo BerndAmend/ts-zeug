@@ -2411,7 +2411,7 @@ export class Client implements AsyncDisposable {
           this.#source.enqueue(p);
         }
       } finally {
-        if (!r.closed) {
+        if (!await r.closed) {
           r.releaseLock();
         }
       }
