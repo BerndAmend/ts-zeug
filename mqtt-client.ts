@@ -12,7 +12,9 @@ await using client = new mqtt.Client(
     //   retain: true,
     // },
   },
-  { alwaysTryToDecodePayloadAsUTF8String: true },
+  {
+    publishDeserializeOptions: mqtt.PublishDeserializeOptions.UTF8String,
+  },
 );
 
 // For Chrome, ... you have to use helper.streamAsyncIterator(client.readable)

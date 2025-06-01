@@ -203,6 +203,18 @@ export class DataReader {
     }
   }
 
+  /**
+   * @returns A Uint8Array representing the entire buffer from byteOffset to byteOffset + byteLength.
+   * This method is useful for getting the full data read by this DataReader.
+   * Note that this does not modify the position of the DataReader.
+   */
+  asUint8Array(): Uint8Array {
+    return this.#buffer.subarray(
+      this.#byteOffset,
+      this.#byteOffset + this.byteLength,
+    );
+  }
+
   get pos(): number {
     return this.#pos;
   }

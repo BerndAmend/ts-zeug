@@ -308,11 +308,11 @@ export type FixedHeader = {
 };
 
 export type AllProperties = Partial<{
-  payload_format_indicator: boolean; // 3.3.2.3.2 true==utf8
+  payload_format_indicator: boolean; // 3.3.2.3.2 true==utf8, false==binary
   message_expiry_interval: Seconds; // 3.3.2.3.3
   content_type: string; // 3.1.3.2.5
   response_topic: Topic; // 3.3.2.3.5
-  correlation_data: Uint8Array; // 3.3.2.3.6
+  correlation_data: DataReader | Uint8Array; // 3.3.2.3.6
   subscription_identifier: number[]; // 3.3.2.3.8
   session_expiry_interval: Seconds; // 3.1.2.11.2
   assigned_client_id: ClientID; // 3.2.2.3.7
@@ -353,14 +353,14 @@ export type ConnectPacket = {
     qos?: QoS; // 3.1.2.6 defaults to QoS.At_most_once_delivery
     retain?: boolean; // 3.1.2.7 defaults to false
     topic: Topic; // 3.1.3.3
-    payload?: Uint8Array | string; // 3.1.3.4
+    payload?: DataReader | Uint8Array | string; // 3.1.3.4
     properties?: { // 3.1.3.2
       will_delay_interval?: Seconds; // 3.1.3.2.2
       // payload_format_indicator?: boolean; // 3.1.3.2.3 automatically determined by the type of the payload
       message_expiry_interval?: Seconds; // 3.1.3.2.4
       content_type?: string; // 3.1.3.2.5
       response_topic?: string; // 3.1.3.2.6
-      correlation_data?: Uint8Array; // 3.1.3.2.7
+      correlation_data?: DataReader | Uint8Array; // 3.1.3.2.7
       user_properties?: UserProperty[]; // 3.1.3.2.8
     };
   };
@@ -415,13 +415,18 @@ export type PublishPacket = {
   qos?: QoS; // 3.3.1.2 defaults to QoS.At_most_once_delivery
   retain?: boolean; // 3.3.1.3 defaults to false
   topic: Topic; // 3.3.2.1
-  payload?: Uint8Array | string; // 3.3.3
+  /**
+   * The DataReader should be preferred if the received data is later accessed with a DataReader/DataView,
+   * since it allows sharing the internal DataView.
+   * For writing DataReader.asUint8Array() is used.
+   */
+  payload?: DataReader | string | Uint8Array; // 3.3.3
   properties?: {
     // payload_format_indicator?: boolean; // 3.3.2.3.2 automatically determined by the type of the payload
     message_expiry_interval?: Seconds; // 3.3.2.3.3
     topic_alias?: number; // 3.3.2.3.4
     response_topic?: Topic; // 3.3.2.3.5
-    correlation_data?: Uint8Array; // 3.3.2.3.6
+    correlation_data?: DataReader | Uint8Array; // 3.3.2.3.6
     user_properties?: UserProperty[]; // 3.3.2.3.7
     subscription_identifier?: number[]; // 3.3.2.3.8
     content_type?: string; // 3.3.2.3.9
@@ -602,6 +607,26 @@ export function printPacket(
 }
 //#endregion
 
+export enum PublishDeserializeOptions {
+  /**
+   * Depending on the payload_format_indicator return the payload as a UTF8 string or as a DataReader.
+   */
+  PayloadFormatIndicator,
+  /**
+   * Always return the payload as a DataReader.
+   */
+  DataReader,
+  /**
+   * Always tries to return the payload as a UTF8 string.
+   * If the payload is not a valid UTF8 string, it will return a DataReader.
+   */
+  UTF8String,
+  /**
+   * Always returns the payload as a Uint8Array.
+   */
+  Uint8Array,
+}
+
 //#region Serialize
 export class Writer extends DataWriter {
   constructor(
@@ -635,12 +660,16 @@ export class Writer extends DataWriter {
     } while (num > 0);
   }
 
-  addBinaryData(bin: Uint8Array) {
-    if (bin.length > 65535) {
-      throw new Error(`data limit is 65535 got ${bin.length}`);
+  addBinaryData(bin: DataReader | Uint8Array) {
+    if (bin.byteLength > 65535) {
+      throw new Error(`data limit is 65535 got ${bin.byteLength}`);
     }
-    this.addUint16(bin.length);
-    this.addArray(bin);
+    this.addUint16(bin.byteLength);
+    if (bin instanceof DataReader) {
+      this.addArray(bin.asUint8Array());
+    } else {
+      this.addArray(bin);
+    }
   }
 
   addUTF8String(str: string) {
@@ -1051,6 +1080,8 @@ export function serializePublishPacket(
     // no payload
   } else if (typeof packet.payload === "string") {
     w.addString(packet.payload);
+  } else if (packet.payload instanceof DataReader) {
+    w.addArray(packet.payload.asUint8Array());
   } else {
     w.addArray(packet.payload);
   }
@@ -1361,12 +1392,21 @@ function readUTF8String(reader: DataReader): string {
   return reader.getUTF8String(len);
 }
 
-function readBinaryData(reader: DataReader): Uint8Array {
+function readBinaryData(
+  reader: DataReader,
+  options?: PublishDeserializeOptions,
+): Uint8Array | DataReader {
   const len = reader.getUint16();
-  return reader.getUint8Array(len);
+  if (options === PublishDeserializeOptions.Uint8Array) {
+    return reader.getUint8Array(len);
+  }
+  return reader.getDataReader(len);
 }
 
-function readProperties(reader: DataReader): AllProperties | undefined {
+function readProperties(
+  reader: DataReader,
+  options?: PublishDeserializeOptions,
+): AllProperties | undefined {
   if (!reader.hasMoreData) {
     return undefined;
   }
@@ -1396,7 +1436,7 @@ function readProperties(reader: DataReader): AllProperties | undefined {
         ret.response_topic = asTopic(readUTF8String(r));
         break;
       case Property.Correlation_Data:
-        ret.correlation_data = readBinaryData(r);
+        ret.correlation_data = readBinaryData(r, options);
         break;
       case Property.Subscription_Identifier:
         if (ret.subscription_identifier === undefined) {
@@ -1417,7 +1457,7 @@ function readProperties(reader: DataReader): AllProperties | undefined {
         ret.authentication_method = readUTF8String(r);
         break;
       case Property.Authentication_Data:
-        ret.authentication_data = readBinaryData(r);
+        ret.authentication_data = readBinaryData(r) as Uint8Array;
         break;
       case Property.Request_Problem_Information:
         ret.request_problem_information = r.getUint8() !== 0;
@@ -1600,20 +1640,8 @@ function deserializeConnAckPacket(
 function deserializePublishPacket(
   fixedHeader: FixedHeader,
   r: DataReader,
-  options?: {
-    alwaysTryToDecodePayloadAsUTF8String?: boolean;
-    alwaysReturnAsUint8Array?: boolean;
-  },
+  options?: PublishDeserializeOptions,
 ): PublishPacket {
-  if (
-    options?.alwaysReturnAsUint8Array === true &&
-    options?.alwaysTryToDecodePayloadAsUTF8String === true
-  ) {
-    throw new Error(
-      "Cannot set alwaysReturnAsUint8Array and alwaysTryToDecodePayloadAsUTF8String",
-    );
-  }
-
   const ret: PublishPacket = {
     type: ControlPacketType.Publish,
     topic: asTopic(readUTF8String(r)),
@@ -1632,25 +1660,38 @@ function deserializePublishPacket(
     ret.qos = qos;
   }
 
-  const props = readProperties(r);
+  const props = readProperties(r, options);
   if (props !== undefined) {
     ret.properties = props;
   }
 
   const remainingSize = r.remainingSize;
   if (remainingSize > 0) {
-    if (
-      (options?.alwaysTryToDecodePayloadAsUTF8String !== true &&
-        props?.payload_format_indicator === true) ||
-      options?.alwaysTryToDecodePayloadAsUTF8String
-    ) {
-      try {
-        ret.payload = r.getUTF8String(remainingSize);
-      } catch {
+    switch (options ?? PublishDeserializeOptions.PayloadFormatIndicator) {
+      case PublishDeserializeOptions.PayloadFormatIndicator:
+        if (props?.payload_format_indicator) {
+          try {
+            ret.payload = r.getUTF8String(remainingSize);
+          } catch {
+            ret.payload = r.getDataReader(remainingSize);
+          }
+        } else {
+          ret.payload = r.getDataReader(remainingSize);
+        }
+        break;
+      case PublishDeserializeOptions.UTF8String:
+        try {
+          ret.payload = r.getUTF8String(remainingSize);
+        } catch {
+          ret.payload = r.getDataReader(remainingSize);
+        }
+        break;
+      case PublishDeserializeOptions.DataReader:
+        ret.payload = r.getDataReader(remainingSize);
+        break;
+      case PublishDeserializeOptions.Uint8Array:
         ret.payload = r.getUint8Array(remainingSize);
-      }
-    } else {
-      ret.payload = r.getUint8Array(remainingSize);
+        break;
     }
   }
   return ret;
@@ -1849,10 +1890,7 @@ export function deserializeAuthPacket(
 export function deserializePacket(
   fixedHeader: FixedHeader,
   reader: DataReader,
-  options?: {
-    alwaysTryToDecodePayloadAsUTF8String?: boolean;
-    alwaysReturnAsUint8Array?: boolean;
-  },
+  options?: PublishDeserializeOptions,
 ): AllPacket {
   const r = reader.getDataReader(fixedHeader.length);
   switch (fixedHeader.type) {
@@ -1900,8 +1938,7 @@ export function deserializePacket(
 export class DeserializeStream {
   constructor(
     readonly options?: {
-      alwaysTryToDecodePayloadAsUTF8String?: boolean;
-      alwaysReturnAsUint8Array?: boolean;
+      publishDeserializeOptions?: PublishDeserializeOptions;
     },
   ) {
   }
@@ -1939,7 +1976,11 @@ export class DeserializeStream {
       }
       try {
         controller.enqueue(
-          deserializePacket(fixedHeader, reader, this.options),
+          deserializePacket(
+            fixedHeader,
+            reader,
+            this.options?.publishDeserializeOptions,
+          ),
         );
       } catch (e) {
         controller.error(`Error while deserializing ${e}`);
@@ -1962,8 +2003,7 @@ export type LowLevelConnection = {
 export async function connectLowLevel(
   address: URL | string,
   options?: {
-    alwaysTryToDecodePayloadAsUTF8String?: boolean;
-    alwaysReturnAsUint8Array?: boolean;
+    publishDeserializeOptions?: PublishDeserializeOptions;
   },
 ): Promise<LowLevelConnection> {
   const ts = new TransformStream<Uint8Array<ArrayBuffer>, AllPacket>(
@@ -2013,15 +2053,13 @@ export async function connectLowLevel(
 export type ClientProperties = {
   reconnectTime?: Milliseconds; // 0: no auto reconnect
   connectTimeout?: Milliseconds; // timeout if no CONNACK is received
-  alwaysTryToDecodePayloadAsUTF8String?: boolean;
-  alwaysReturnAsUint8Array?: boolean;
+  publishDeserializeOptions?: PublishDeserializeOptions;
 };
 
 export const DefaultClientProperties: Required<ClientProperties> = {
   reconnectTime: 1_000 as Milliseconds,
   connectTimeout: 10_000 as Milliseconds,
-  alwaysTryToDecodePayloadAsUTF8String: false,
-  alwaysReturnAsUint8Array: false,
+  publishDeserializeOptions: PublishDeserializeOptions.PayloadFormatIndicator,
 };
 
 export enum CustomPacketType {
