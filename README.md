@@ -1,16 +1,123 @@
 # ts-zeug
 
-Various stuff/zeug for typescript for deno, the web and some parts for node. It
-contains
+Various stuff ("Zeug") for TypeScript, designed for Deno, the web, and partially
+for Node.js. This repository provides:
 
-- a mqtt 5 implementation (PubAckPacket, PubRecPacket, PubRelPacket,
-  PubCompPacket are not yet implemented)
-- a feature complete msgpack implementation
+- An MQTT 5 client implementation (Note: PubAckPacket, PubRecPacket,
+  PubRelPacket, and PubCompPacket are not yet implemented)
+- A feature-complete MsgPack implementation for efficient binary serialization.
 
-## MQTT Client example
+## Features
 
-`deno run --allow-net mqtt-client.ts`
+- **MQTT 5 Client:** Connect to MQTT brokers, publish and subscribe to topics,
+  and handle messages with ease.
+- **MsgPack:** Serialize and deserialize JavaScript objects using the efficient
+  MessagePack format. It also supports a low level API.
+
+## MQTT Client Example
+
+This example demonstrates how to connect to a local MQTT broker, subscribe to a
+topic, publish a message, and handle incoming messages.
+
+```ts
+import { mqtt } from "jsr:@bernd/ts-zeug";
+
+await using client = new mqtt.Client(
+  "tcp://localhost:1883",
+  {
+    keepalive: 10 as mqtt.Seconds,
+    will: {
+      topic: mqtt.asTopic("test/topic"),
+      payload: "bye",
+    },
+  },
+  {
+    publishDeserializeOptions: mqtt.PublishDeserializeOptions.UTF8String,
+  },
+);
+
+// For Chrome, ... you have to use helper.streamAsyncIterator(client.readable)
+readDataLoop: for await (const p of client.readable) {
+  //mqtt.logPacket(p);
+  switch (p.type) {
+    case mqtt.ControlPacketType.ConnAck: {
+      if (p.connect_reason_code !== mqtt.ConnectReasonCode.Success) {
+        console.error("%cCouldn't connect", "color: red", p);
+        break;
+      }
+      mqtt.logPacket(
+        await client.subscribe({
+          subscriptions: [{
+            topic: mqtt.asTopicFilter("#"),
+            retain_as_published: true,
+          }],
+        }),
+      );
+      await client.publish({
+        topic: mqtt.asTopic("test/topic"),
+        payload: "Hi!",
+      });
+      break;
+    }
+    case mqtt.ControlPacketType.Publish: {
+      if (p.payload === undefined) {
+        console.log(
+          `%c${p.topic}`,
+          `${p.retain ? "color: blue;" : ""} font-weight: bold`,
+        );
+      } else {
+        try {
+          console.log(
+            `%c${p.topic}`,
+            `${p.retain ? "color: blue;" : ""} font-weight: bold`,
+            JSON.parse(p.payload as string),
+          );
+        } catch {
+          console.log(
+            `%c${p.topic}`,
+            `${p.retain ? "color: blue;" : ""} font-weight: bold`,
+            p.payload as string,
+          );
+        }
+      }
+      // Exit after we received one Publish Packet
+      break readDataLoop;
+      break;
+    }
+    case mqtt.ControlPacketType.Disconnect: {
+      console.log("%cDisconnect", "color: red", p);
+      break;
+    }
+    case mqtt.CustomPacketType.ConnectionClosed: {
+      console.log("%cConnectionClosed", "color: red", p);
+      break;
+    }
+    case mqtt.CustomPacketType.Error: {
+      console.error("%cError", "color: red", p);
+      break;
+    }
+  }
+}
+
+console.log("%cexiting", "color: red");
+```
+
+## MsgPack Example
+
+This example shows how to encode and decode objects using MsgPack.
+
+```ts
+import { msgpack } from "jsr:@bernd/ts-zeug";
+
+const serialized = msgpack.serialize({ hello: "world", num: 42 });
+console.log("Serialized:", serialized);
+
+const deserialized = msgpack.deserialize(serialized);
+console.log("Deserialized:", deserialized);
+```
 
 ## Tests
+
+Run all tests with:
 
 `deno test`
