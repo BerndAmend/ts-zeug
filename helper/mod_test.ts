@@ -115,7 +115,6 @@ Deno.test("DataReader: getDataReader returns correct slice", () => {
   assertEquals(sub.getUint8(), 2);
   assertEquals(sub.getUint8(), 3);
   assertEquals(sub.byteLength, 2);
-  assertEquals(sub.byteOffset, 1);
 });
 
 Deno.test("DataReader: reading out of bounds throws", () => {

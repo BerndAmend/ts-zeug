@@ -82,12 +82,12 @@ export class DataReader {
     }
     if (buffer instanceof DataReader) {
       this.#buffer = buffer.#buffer;
-      this.byteOffset = byteOffset + buffer.byteOffset;
+      this.#byteOffset = byteOffset + buffer.#byteOffset;
       this.byteLength = byteLength;
       this.#view = buffer.#view;
     } else {
       this.#buffer = intoUint8Array(buffer);
-      this.byteOffset = byteOffset;
+      this.#byteOffset = byteOffset;
       this.byteLength = byteLength;
       this.#view = new DataView(
         this.#buffer.buffer,
@@ -107,7 +107,7 @@ export class DataReader {
 
   getDataReader(byteLength: number): DataReader {
     const pos = this.#getReadPosition(byteLength);
-    return new DataReader(this, pos - this.byteOffset, byteLength);
+    return new DataReader(this, pos - this.#byteOffset, byteLength);
   }
 
   getUint8(): number {
@@ -189,7 +189,7 @@ export class DataReader {
     const pos = this.#getReadPosition(byteLength);
     return this.#buffer.subarray(
       pos,
-      this.byteOffset + this.#pos,
+      this.#byteOffset + this.#pos,
     );
   }
 
@@ -226,20 +226,24 @@ export class DataReader {
     }
     const pos = this.#pos;
     this.#pos += byteLength;
-    return this.byteOffset + pos;
+    return this.#byteOffset + pos;
   }
 
   #pos = 0;
   readonly byteLength: number;
-  readonly byteOffset: number;
+  #byteOffset: number;
   /**
    * If a DataReader is created from another DataReader, this will be the original buffer.
    * If a DataReader is created from a Uint8Array, this will be the same input Uint8Array.
+   * This member is private to ensure that only the data within the range from byteOffset
+   * to byteOffset + byteLength is accessed.
    */
   #buffer: Uint8Array;
   /**
    * If a DataReader is created from another DataReader, this will be the original DataView.
    * If a DataReader is created from a Uint8Array, this will be a new DataView of the same buffer.
+   * This member is private to ensure that only the data within the range from byteOffset
+   * to byteOffset + byteLength is accessed.
    */
   #view: DataView;
   /**
