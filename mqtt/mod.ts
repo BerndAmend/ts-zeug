@@ -2222,6 +2222,9 @@ export class Client implements AsyncDisposable {
     return this.#writable !== undefined;
   }
 
+  /**
+   * The readable stream is closed if the connection was closed locally.
+   */
   get readable(): ReadableStream<AllPacket | CustomPackets> {
     return this.#readable;
   }
@@ -2240,6 +2243,31 @@ export class Client implements AsyncDisposable {
     );
     this.#active = true;
     this.#messageHandlerPromise = this.#handleMessages();
+  }
+
+  async close(disconnectPacket?: DisconnectPacket) {
+    if (this.#writable === undefined) {
+      return;
+    }
+    this.#active = false;
+    try {
+      await this.#writable.write(
+        serializeDisconnectPacket(disconnectPacket ?? {}, this.#writer),
+      );
+    } catch {
+      // The connection could already be closed
+    }
+    this.#closePromiseFulFill!({
+      done: true,
+      value: ConnectionClosedReason.ClosedLocally,
+    });
+    await this.#messageHandlerPromise;
+    this.#source.close();
+
+    this.#source = new ClientSource();
+    this.#readable = new ReadableStream<AllPacket | CustomPackets>(
+      this.#source,
+    );
   }
 
   async #handleMessages() {
@@ -2304,9 +2332,13 @@ export class Client implements AsyncDisposable {
         }
       } catch (e: unknown) {
         try {
-          r.releaseLock();
-          this.#writable.releaseLock();
-          //await con.writable.close();
+          if (con.readable.locked) {
+            r.releaseLock();
+          }
+          if (con.writable.locked) {
+            this.#writable.releaseLock();
+          }
+          await con.writable.close();
         } catch (_e) {
           //          console.error("Couldn't close connection", e);
         }
@@ -2384,13 +2416,10 @@ export class Client implements AsyncDisposable {
             value: ConnectionClosedReason.PingFailed,
           });
           try {
-            //r.releaseLock();
-            if (this.#writable) {
+            if (this.#writable && con.writable.locked) {
               this.#writable.releaseLock();
             }
-            if (con.writable.locked) {
-              await con.writable.close();
-            }
+            await con.writable.close();
           } catch (e) {
             console.log("Terminate connection in ping handler failed", e);
           }
@@ -2451,10 +2480,12 @@ export class Client implements AsyncDisposable {
 
           this.#source.enqueue(p);
         }
-      } finally {
-        if (!await r.closed) {
-          r.releaseLock();
-        }
+      } catch (e: unknown) {
+        console.error("BUG: Error while reading from connection", e);
+        connectionClosedPacket = {
+          type: CustomPacketType.ConnectionClosed,
+          reason: ConnectionClosedReason.ClosedRemotely,
+        };
       }
 
       if (this.#pingIntervalId) {
@@ -2463,16 +2494,29 @@ export class Client implements AsyncDisposable {
       }
 
       try {
+        await r.closed;
+        if (con.readable.locked) {
+          r.releaseLock();
+        }
+      } catch (e: unknown) {
+        console.error("BUG: Error while closing connection", e);
+      }
+
+      try {
         if (con.writable.locked) {
           this.#writable.releaseLock();
         }
         this.#writable = undefined;
         await con.writable.close();
-      } catch (_e) {
-        // console.log("TODO", _e);
+      } catch (e: unknown) {
+        console.error("BUG: Error while closing writable stream", e);
       }
 
-      this.#clearPendingReplies(new Error("connection closed"));
+      try {
+        this.#clearPendingReplies(new Error("connection closed"));
+      } catch (e) {
+        console.error("BUG: Error while clearing pending replies", e);
+      }
 
       this.#source.enqueue(connectionClosedPacket);
     }
@@ -2538,29 +2582,6 @@ export class Client implements AsyncDisposable {
     }
 
     return reply;
-  }
-
-  async close(disconnectPacket?: DisconnectPacket) {
-    if (this.#writable === undefined) {
-      return;
-    }
-    this.#active = false;
-    if (this.#pingIntervalId) {
-      clearInterval(this.#pingIntervalId);
-      this.#pingIntervalId = undefined;
-    }
-    try {
-      await this.#writable.write(
-        serializeDisconnectPacket(disconnectPacket ?? {}, this.#writer),
-      );
-    } catch {
-      // The connection could already be closed
-    }
-    this.#closePromiseFulFill!({
-      done: true,
-      value: ConnectionClosedReason.ClosedLocally,
-    });
-    await this.#messageHandlerPromise;
   }
 }
 
