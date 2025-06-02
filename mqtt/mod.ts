@@ -2133,7 +2133,7 @@ export class ClientSource
 
 /**
  * Default Client implementation providing the following features
- *  - auto-reconnect
+ *  - auto-reconnect, keeping the assigned client id
  *  - send pings
  */
 export class Client implements AsyncDisposable {
@@ -2193,7 +2193,13 @@ export class Client implements AsyncDisposable {
   }
 
   /**
-   * @param properties Values that are not set are set to the default values.
+   * Creates a new MQTT Client that connects to the given address.
+   * The connection is established automatically.
+   * If the connection fails, it will retry to connect after the reconnectTime.
+   * If the connection was closed with close(), you have to call open() to re-open the connection.
+   * @param address the address of the MQTT server to connect to, e.g. "mqtt://localhost" or "ws://localhost/mqtt"
+   * @param connectPacket the connect packet that is sent to the MQTT server. An Empty object is used if not provided.
+   * @param properties Values that are not set are set to DefaultClientProperties.
    */
   constructor(
     public readonly address: URL | string,
@@ -2205,6 +2211,9 @@ export class Client implements AsyncDisposable {
     this.open();
   }
 
+  /**
+   * The connect packet that is sent to the MQTT server.
+   */
   get connectPacket(): OmitPacketType<ConnectPacket> {
     return this.#connectPacket;
   }
@@ -2223,6 +2232,8 @@ export class Client implements AsyncDisposable {
   }
 
   /**
+   * A readable stream that emits all packets received from the MQTT server.
+   * It also emits CustomPackets, which are used to signal errors or connection issues.
    * The readable stream is closed if the connection was closed locally.
    */
   get readable(): ReadableStream<AllPacket | CustomPackets> {
@@ -2230,7 +2241,7 @@ export class Client implements AsyncDisposable {
   }
 
   /**
-   * this function is called automatically and is only required to reopen a connection after closing it
+   * This function is called automatically in the constructor and is only required if the connection was closed with close().
    */
   open() {
     if (this.#messageHandlerPromise) {
@@ -2245,6 +2256,12 @@ export class Client implements AsyncDisposable {
     this.#messageHandlerPromise = this.#handleMessages();
   }
 
+  /**
+   * Closes the connection to the MQTT server.
+   * If the connection was closed successfully, the readable stream is closed.
+   * @param disconnectPacket optional disconnect packet to send to the server
+   * @returns when the connection was closed
+   */
   async close(disconnectPacket?: DisconnectPacket) {
     if (this.#writable === undefined) {
       return;
@@ -2270,6 +2287,9 @@ export class Client implements AsyncDisposable {
     );
   }
 
+  /**
+   * @returns a promise that resolves when the connection was closed
+   */
   async #handleMessages() {
     while (this.#active) {
       let con: LowLevelConnection;
@@ -2523,8 +2543,10 @@ export class Client implements AsyncDisposable {
   }
 
   /**
-   * fails if offline
-   * @throws
+   * Publishes a message to the MQTT server.
+   * @param packet the packet to publish, the packet_identifier is set automatically
+   * @returns a promise that resolves when the message was sent
+   * @throws if the connection is not connected or the write fails
    */
   async publish(
     packet: MakeSerializePacketType<PublishPacket>,
@@ -2537,6 +2559,12 @@ export class Client implements AsyncDisposable {
     await this.#writable.write(msg);
   }
 
+  /**
+   * Subscribes to a topic on the MQTT server.
+   * @param packet the packet to subscribe, the packet_identifier is set automatically
+   * @returns a promise that resolves with the SubAckPacket when the subscription was successful
+   * @throws if the connection is not connected, the write fails or no SubAckPacket is received
+   */
   async subscribe(
     packet: MakeSerializePacketType<Omit<SubscribePacket, "packet_identifier">>,
   ): Promise<SubAckPacket> {
@@ -2559,6 +2587,12 @@ export class Client implements AsyncDisposable {
     return reply;
   }
 
+  /**
+   * Unsubscribes from a topic on the MQTT server.
+   * @param packet the packet to unsubscribe, the packet_identifier is set automatically
+   * @returns a promise that resolves with the UnsubAckPacket when the unsubscription was successful
+   * @throws if the connection is not connected, the write fails or no UnsubAckPacket is received
+   */
   async unsubscribe(
     packet: MakeSerializePacketType<
       Omit<UnsubscribePacket, "packet_identifier">
