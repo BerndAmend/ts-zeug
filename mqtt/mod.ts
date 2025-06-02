@@ -2033,10 +2033,13 @@ export async function connectLowLevel(
       writable: conn.writable,
     };
   }
-  if (typeof Deno !== "undefined" && address.protocol === "tcp:") {
+  if (
+    typeof Deno !== "undefined" &&
+    (address.protocol === "tcp:" || address.protocol === "mqtt:")
+  ) {
     const conn = await Deno.connect({
       hostname: address.hostname,
-      port: Number.parseInt(address.port),
+      port: address.port === "" ? 1883 : Number.parseInt(address.port),
       transport: "tcp",
     });
 
