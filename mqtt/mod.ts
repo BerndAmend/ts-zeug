@@ -2087,15 +2087,6 @@ export type CustomPackets = {
   reason: ConnectionClosedReason;
 };
 
-//   #outgoing = new Map<Topic, Uint8Array>();
-// #subscriptions = new Map<PacketIdentifier, SubscribePacket>();
-// if (packet.retain) {
-//   this.#outgoing.set(packet.topic, new Uint8Array(msg));
-// }
-// if (packet.payload === undefined) {
-//   this.#outgoing.delete(packet.topic);
-// }
-
 export class ClientSource
   implements UnderlyingSource<AllPacket | CustomPackets> {
   #controller?: ReadableStreamDefaultController;
