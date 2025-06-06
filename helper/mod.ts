@@ -165,24 +165,29 @@ export class DataReader {
   }
 
   getBigUintOrUint64(): number | bigint {
-    const high = this.#view.getUint32(this.#getReadPosition(8));
-    this.#pos -= 8;
-    if (high < 2 ** 21) {
-      return this.getUint64();
+    const pos = this.#getReadPosition(8);
+    const high = this.#view.getUint32(pos);
+    // Checks if the value is a safe integer (<= 2 ** 53)
+    // If the high part is less or equal than 2**21, we can safely return a number without losing precision.
+    if (high <= 0x200_000) {
+      const low = this.#view.getUint32(pos + 4);
+      return high * 0x1_0000_0000 + low;
     }
+    this.#pos -= 8;
     return this.getBigUint64();
   }
 
   getBigIntOrInt64(): number | bigint {
-    // TODO: optimize
-    const num = this.getBigInt64();
-    if (
-      num >= BigInt(Number.MIN_SAFE_INTEGER) &&
-      num <= BigInt(Number.MAX_SAFE_INTEGER)
-    ) {
-      return Number(num);
+    const pos = this.#getReadPosition(8);
+    const high = this.#view.getInt32(pos);
+    // Checks if the value is a safe integer (< 2 ** 53)
+    // If the high part is less than 2**21, we can safely return a number without losing precision.
+    if (high >= -0x200_000 && high <= 0x200_000) {
+      const low = this.#view.getUint32(pos + 4);
+      return high * 0x1_0000_0000 + low;
     }
-    return num;
+    this.#pos -= 8;
+    return this.getBigInt64();
   }
 
   getUint8Array(byteLength: number): Uint8Array {

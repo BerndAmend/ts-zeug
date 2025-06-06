@@ -56,7 +56,17 @@ Deno.test("DataWriter and DataReader: all types roundtrip", () => {
 
   // BigInt
   writer.addBigUint64(2n ** 64n - 1n);
-  writer.addBigInt64(-(2n ** 63n));
+  writer.addBigInt64(2n ** 62n);
+  writer.addBigInt64(-(2n ** 62n));
+
+  // BigUint for reading them with getBigUintOrUint64
+  writer.addBigUint64(2n ** 64n - 1n);
+  writer.addBigUint64(2n ** 52n);
+  // BigInt for reading them with getBigIntOrInt64
+  writer.addBigInt64(2n ** 63n - 1n);
+  writer.addBigInt64(2n ** 52n);
+  writer.addBigInt64(-(2n ** 62n));
+  writer.addBigInt64(-(2n ** 52n));
 
   // Float
   writer.addFloat32(1.2345);
@@ -89,9 +99,18 @@ Deno.test("DataWriter and DataReader: all types roundtrip", () => {
   assertEquals(reader.getInt32(), -2147483648);
   assertEquals(reader.getInt64(), Number.MIN_SAFE_INTEGER);
 
-  // BigInt
+  // BigInt / BigUint
   assertEquals(reader.getBigUint64(), 2n ** 64n - 1n);
-  assertEquals(reader.getBigInt64(), -(2n ** 63n));
+  assertEquals(reader.getBigInt64(), 2n ** 62n);
+  assertEquals(reader.getBigInt64(), -(2n ** 62n));
+
+  assertEquals(reader.getBigUintOrUint64(), 2n ** 64n - 1n);
+  assertEquals(reader.getBigUintOrUint64(), 2 ** 52);
+
+  assertEquals(reader.getBigIntOrInt64(), 2n ** 63n - 1n);
+  assertEquals(reader.getBigIntOrInt64(), 2 ** 52);
+  assertEquals(reader.getBigIntOrInt64(), -(2n ** 62n));
+  assertEquals(reader.getBigIntOrInt64(), -(2 ** 52));
 
   // Float
   assertEquals(Math.abs(reader.getFloat32() - 1.2345) < 1e-6, true);
