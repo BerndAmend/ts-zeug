@@ -371,8 +371,8 @@ export class DataWriter {
     }
     this.ensureBufferSize(8);
 
-    const high = value / 0x1_0000_0000;
-    const low = value;
+    const high = Math.floor(value / 0x1_0000_0000);
+    const low = value | 0;
     this.view.setUint32(this.pos, high);
     this.view.setUint32(this.pos + 4, low);
     this.pos += 8;
@@ -385,8 +385,8 @@ export class DataWriter {
     this.ensureBufferSize(8);
 
     const high = Math.floor(value / 0x1_0000_0000);
-    const low = value;
-    this.view.setUint32(this.pos, high);
+    const low = value | 0;
+    this.view.setInt32(this.pos, high);
     this.view.setUint32(this.pos + 4, low);
     this.pos += 8;
   }

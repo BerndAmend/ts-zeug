@@ -46,12 +46,19 @@ Deno.test("DataWriter and DataReader: all types roundtrip", () => {
   writer.addUint8(255);
   writer.addUint16(65535);
   writer.addUint32(0x89abcdef);
+  writer.addUint64(0x89abcdef);
   writer.addUint64(Number.MAX_SAFE_INTEGER);
 
   // Signed
+  writer.addInt8(127);
+  writer.addInt16(32767);
+  writer.addInt32(0x77abcdef);
+  writer.addInt64(0x77abcdef);
+  writer.addInt64(Number.MAX_SAFE_INTEGER);
   writer.addInt8(-128);
   writer.addInt16(-32768);
   writer.addInt32(-2147483648);
+  writer.addInt64(-2147483648);
   writer.addInt64(Number.MIN_SAFE_INTEGER);
 
   // BigInt
@@ -91,12 +98,19 @@ Deno.test("DataWriter and DataReader: all types roundtrip", () => {
   assertEquals(reader.getUint8(), 255);
   assertEquals(reader.getUint16(), 65535);
   assertEquals(reader.getUint32(), 0x89abcdef);
+  assertEquals(reader.getUint64(), 0x89abcdef);
   assertEquals(reader.getUint64(), Number.MAX_SAFE_INTEGER);
 
   // Signed
+  assertEquals(reader.getInt8(), 127);
+  assertEquals(reader.getInt16(), 32767);
+  assertEquals(reader.getInt32(), 0x77abcdef);
+  assertEquals(reader.getInt64(), 0x77abcdef);
+  assertEquals(reader.getInt64(), Number.MAX_SAFE_INTEGER);
   assertEquals(reader.getInt8(), -128);
   assertEquals(reader.getInt16(), -32768);
   assertEquals(reader.getInt32(), -2147483648);
+  assertEquals(reader.getInt64(), -2147483648);
   assertEquals(reader.getInt64(), Number.MIN_SAFE_INTEGER);
 
   // BigInt / BigUint
