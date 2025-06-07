@@ -179,20 +179,20 @@ export class Serializer {
     this.#writer.ensureBufferSize(
       utf8.byteLength + Length.max_header_length,
     );
-    if (utf8.byteLength < 31) {
+    if (utf8.byteLength < 32) {
       this.#addFormat(Formats.fixstr_start | utf8.byteLength);
-    } else if (utf8.byteLength < Length.bit_8) {
+    } else if (utf8.byteLength <= Length.bit_8) {
       this.#addFormat(Formats.str_8);
       this.#writer.addUint8(utf8.byteLength);
-    } else if (utf8.byteLength < Length.bit_16) {
+    } else if (utf8.byteLength <= Length.bit_16) {
       this.#addFormat(Formats.str_16);
       this.#writer.addUint16(utf8.byteLength);
-    } else if (utf8.byteLength < Length.bit_32) {
+    } else if (utf8.byteLength <= Length.bit_32) {
       this.#addFormat(Formats.str_32);
       this.#writer.addUint32(utf8.byteLength);
     } else {
       throw new Error(
-        `string length exceeds the limit of msgpack length: ${utf8.byteLength}`,
+        `string length exceeds the limit of msgpack: ${utf8.byteLength}`,
       );
     }
     this.#writer.addArray(utf8);
@@ -203,18 +203,18 @@ export class Serializer {
     this.#writer.ensureBufferSize(
       data.byteLength + Length.max_header_length,
     );
-    if (data.byteLength < Length.bit_8) {
+    if (data.byteLength <= Length.bit_8) {
       this.#addFormat(Formats.bin_8);
       this.#writer.addUint8(data.byteLength);
-    } else if (data.byteLength < Length.bit_16) {
+    } else if (data.byteLength <= Length.bit_16) {
       this.#addFormat(Formats.bin_16);
       this.#writer.addUint16(data.byteLength);
-    } else if (data.byteLength < Length.bit_32) {
+    } else if (data.byteLength <= Length.bit_32) {
       this.#addFormat(Formats.bin_32);
       this.#writer.addUint32(data.byteLength);
     } else {
       throw new Error(
-        `string length exceeds the limit of msgpack length: ${array.byteLength}`,
+        `binary length exceeds the limit of msgpack: ${array.byteLength}`,
       );
     }
     this.#writer.addArray(data);
@@ -248,8 +248,8 @@ export class Serializer {
   }
 
   addExt(typeAsInt8: number, array: ArrayBufferView) {
-    if (typeAsInt8 < -128 || typeAsInt8 > 128) {
-      throw new Error("typeAsInt8 is out of range (-128<x<128)");
+    if (typeAsInt8 < -128 || typeAsInt8 > 127) {
+      throw new Error("typeAsInt8 is out of range (-128<=x<=127)");
     }
 
     const data = intoUint8Array(array);
@@ -263,15 +263,19 @@ export class Serializer {
       this.#addFormat(Formats.fixext_8);
     } else if (data.byteLength == 16) {
       this.#addFormat(Formats.fixext_16);
-    } else if (data.byteLength < Length.bit_8) {
+    } else if (data.byteLength <= Length.bit_8) {
       this.#addFormat(Formats.ext_8);
       this.#writer.addUint8(data.byteLength);
-    } else if (data.byteLength < Length.bit_16) {
+    } else if (data.byteLength <= Length.bit_16) {
       this.#addFormat(Formats.ext_16);
       this.#writer.addUint16(data.byteLength);
-    } else if (data.byteLength < Length.bit_32) {
+    } else if (data.byteLength <= Length.bit_32) {
       this.#addFormat(Formats.ext_32);
       this.#writer.addUint32(data.byteLength);
+    } else {
+      throw new Error(
+        `extension data length exceeds the limit of msgpack: ${data.byteLength}`,
+      );
     }
     this.#writer.addInt8(typeAsInt8);
     this.#writer.addArray(data);
