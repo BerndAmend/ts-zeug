@@ -1947,13 +1947,13 @@ export class DeserializeStream {
     chunk: Uint8Array,
     controller: TransformStreamDefaultController<AllPacket>,
   ) {
-    if (this.#particalChunk) {
+    if (this.#partialChunk) {
       const newChunk = new Uint8Array(
-        this.#particalChunk.length + chunk.length,
+        this.#partialChunk.length + chunk.length,
       );
-      newChunk.set(this.#particalChunk);
-      newChunk.set(chunk, this.#particalChunk.length);
-      this.#particalChunk = undefined;
+      newChunk.set(this.#partialChunk);
+      newChunk.set(chunk, this.#partialChunk.length);
+      this.#partialChunk = undefined;
       chunk = newChunk;
     }
     let firstMessage = true;
@@ -1966,11 +1966,11 @@ export class DeserializeStream {
       ) {
         // incomplete mqtt packet, decode and handle the data the next time we receive more data
         if (firstMessage) {
-          this.#particalChunk = chunk;
+          this.#partialChunk = chunk;
         } else {
           // store the left over data
           reader.pos = pos;
-          this.#particalChunk = reader.getUint8Array(reader.remainingSize);
+          this.#partialChunk = reader.getUint8Array(reader.remainingSize);
         }
         return;
       }
@@ -1989,7 +1989,7 @@ export class DeserializeStream {
     }
   }
 
-  #particalChunk: Uint8Array | undefined;
+  #partialChunk: Uint8Array | undefined;
 }
 
 export type LowLevelConnection = {
