@@ -2133,6 +2133,7 @@ export class ClientSource
   close() {
     if (!this.#closed) {
       this.#controller!.close();
+      this.#closed = true;
     }
   }
 
