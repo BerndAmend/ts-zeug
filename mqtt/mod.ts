@@ -2181,7 +2181,11 @@ export class Client implements AsyncDisposable {
   #clearPendingReplies(err?: Error) {
     for (const v of this.#pendingReplies) {
       if (v !== undefined) {
-        v.reject(err ?? new Error("#clearPendingReplies"));
+        try {
+          v.reject(err ?? new Error("#clearPendingReplies"));
+        } catch (e: unknown) {
+          console.error("Error while rejecting a pending reply", e);
+        }
       }
     }
     this.#pendingReplies = [{
@@ -2522,8 +2526,8 @@ export class Client implements AsyncDisposable {
 
           this.#source.enqueue(p);
         }
-      } catch (e: unknown) {
-        console.error("BUG: Error while reading from connection", e);
+      } catch (_e: unknown) {
+        // The stream was closed, we can ignore this error, e.g. network error
         connectionClosedPacket = {
           type: CustomPacketType.ConnectionClosed,
           reason: ConnectionClosedReason.ClosedRemotely,
@@ -2540,8 +2544,8 @@ export class Client implements AsyncDisposable {
         if (con.readable.locked) {
           r.releaseLock();
         }
-      } catch (e: unknown) {
-        console.error("BUG: Error while closing connection", e);
+      } catch (_e: unknown) {
+        // This should only happen if the connection was already closed or an error occurred
       }
 
       try {
@@ -2550,15 +2554,11 @@ export class Client implements AsyncDisposable {
         }
         this.#writable = undefined;
         await con.writable.close();
-      } catch (e: unknown) {
-        console.error("BUG: Error while closing writable stream", e);
+      } catch (_e: unknown) {
+        // We don't really care if an error occurred while closing the connection
       }
 
-      try {
-        this.#clearPendingReplies(new Error("connection closed"));
-      } catch (e) {
-        console.error("BUG: Error while clearing pending replies", e);
-      }
+      this.#clearPendingReplies(new Error("connection closed"));
 
       this.#source.enqueue(connectionClosedPacket);
     }
