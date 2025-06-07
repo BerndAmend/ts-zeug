@@ -1873,31 +1873,6 @@ function deserializePublishPacket(
 }
 
 /**
- * 3.10 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901179
- */
-function deserializeUnsubscribePacket(
-  _fixedHeader: FixedHeader,
-  r: DataReader,
-): UnsubscribePacket {
-  const ret: UnsubscribePacket = {
-    type: ControlPacketType.Unsubscribe,
-    packet_identifier: r.getUint16() as PacketIdentifier,
-    topic_filters: [],
-  };
-
-  const props = readProperties(r);
-  if (props !== undefined) {
-    ret.properties = props;
-  }
-
-  while (r.hasMoreData) {
-    ret.topic_filters.push(asTopicFilter(readUTF8String(r)));
-  }
-
-  return ret;
-}
-
-/**
  * 3.4
  */
 function deserializePubAckPacket(
@@ -2067,6 +2042,31 @@ function deserializeSubAckPacket(
 
   while (r.hasMoreData) {
     ret.reason_codes.push(r.getUint8());
+  }
+
+  return ret;
+}
+
+/**
+ * 3.10 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901179
+ */
+function deserializeUnsubscribePacket(
+  _fixedHeader: FixedHeader,
+  r: DataReader,
+): UnsubscribePacket {
+  const ret: UnsubscribePacket = {
+    type: ControlPacketType.Unsubscribe,
+    packet_identifier: r.getUint16() as PacketIdentifier,
+    topic_filters: [],
+  };
+
+  const props = readProperties(r);
+  if (props !== undefined) {
+    ret.properties = props;
+  }
+
+  while (r.hasMoreData) {
+    ret.topic_filters.push(asTopicFilter(readUTF8String(r)));
   }
 
   return ret;
