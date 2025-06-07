@@ -2416,7 +2416,7 @@ export class Client implements AsyncDisposable {
         }
         this.#pingIntervalId = setInterval(async () => {
           const msSinceLastPingResp = Date.now() - this.#lastPingRespReceived;
-          if (msSinceLastPingResp > keep_alive! * 1500) {
+          if (msSinceLastPingResp > (keep_alive! * 1000 * 1.5)) {
             // console.log(
             //   `PingResp was missing for ${msSinceLastPingResp} ms, terminate connection`,
             // );
