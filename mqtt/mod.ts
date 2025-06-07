@@ -2017,7 +2017,7 @@ export async function connectLowLevel(
     address = new URL(address);
   }
   if (address.protocol === "ws:" || address.protocol === "wss:") {
-    if (typeof Deno !== undefined || typeof WebSocketStream === "undefined") { // The WebSocketStreams from Deno 1.39.1, behave different from the Browser implementations, lets wait for the big changes that are currently applied in Deno
+    if (typeof WebSocketStream === "undefined") {
       const conn = streamifyWebSocket(
         address.toString(),
         "mqtt",
