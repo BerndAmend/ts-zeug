@@ -751,6 +751,13 @@ export class Writer extends DataWriter {
     }
     const endPos = this.pos;
     const size = endPos - maxFixedHeaderSize;
+
+    if (size >= this.#maximumPacketSize) {
+      throw new Error(
+        `Message size is too large: ${size} bytes, the maximum_packet_size is set to ${this.#maximumPacketSize} bytes`,
+      );
+    }
+
     const start = maxFixedHeaderSize - 1 - this.lengthVariableByteInteger(size);
     this.pos = start;
     this.addUint8(type << 4 | flags);
@@ -759,8 +766,23 @@ export class Writer extends DataWriter {
     return this.getBufferView(start, endPos);
   }
 
+  get maximumPacketSize(): number {
+    return this.#maximumPacketSize;
+  }
+
+  set maximumPacketSize(value: number | undefined) {
+    value ??= 268_435_455; // default value
+    if (value < 0 || value > 268_435_455) {
+      throw new Error(
+        `Invalid maximum packet size: ${value}, must be between 0 and 268_435_455`,
+      );
+    }
+    this.#maximumPacketSize = value;
+  }
+
   #textEncoder = new TextEncoder();
   #internalWriter: Writer | undefined;
+  #maximumPacketSize = 268_435_455; //
 }
 
 export type OmitPacketType<T extends { type: ControlPacketType }> =
@@ -2332,6 +2354,8 @@ export class Client implements AsyncDisposable {
               this.#connectPacket.client_id = assigned_client_id;
             }
           }
+          this.#writer.maximumPacketSize = this.#connectAck?.properties
+            ?.maximum_packet_size;
           this.#source.enqueue(this.#connectAck);
         } else {
           r.releaseLock();
