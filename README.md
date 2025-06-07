@@ -3,8 +3,7 @@
 Various stuff ("Zeug") for TypeScript, designed for Deno, the web, and partially
 for Node.js. This repository provides:
 
-- An MQTT 5 client implementation (Note: PubAckPacket, PubRecPacket,
-  PubRelPacket, and PubCompPacket are not yet implemented)
+- An MQTT 5 client implementation (Note: QoS 1/2 are supported but not automatically handled by the client)
 - A feature-complete MsgPack implementation for efficient binary serialization.
 
 ## Features

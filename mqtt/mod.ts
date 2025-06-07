@@ -146,6 +146,37 @@ export enum PubAckReasonCode {
 }
 
 /**
+ * 3.5.2.1
+ */
+export enum PubRecReasonCode {
+  Success = 0x00,
+  No_matching_subscribers = 0x10,
+  Unspecified_error = 0x80,
+  Implementation_specific_error = 0x83,
+  Not_authorized = 0x87,
+  Topic_Name_invalid = 0x90,
+  Packet_Identifier_in_use = 0x91,
+  Quota_exceeded = 0x97,
+  Payload_format_invalid = 0x99,
+}
+
+/**
+ * 3.6.2.1
+ */
+export enum PubRelReasonCode {
+  Success = 0x00,
+  Packet_Identifier_not_found = 0x92,
+}
+
+/**
+ * 3.7.2.1
+ */
+export enum PubCompReasonCode {
+  Success = 0x00,
+  Packet_Identifier_not_found = 0x92,
+}
+
+/**
  * 3.9.3 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901178
  */
 export enum SubAckReasonCode {
@@ -436,24 +467,56 @@ export type PublishPacket = {
   };
 };
 
+/**
+ * 3.4
+ */
 export type PubAckPacket = {
   type: ControlPacketType.PubAck;
-  // Not implemented
+  packet_identifier: PacketIdentifier;
+  reason_code?: PubAckReasonCode;
+  properties?: {
+    reason_string?: string;
+    user_properties?: UserProperty[];
+  };
 };
 
+/**
+ * 3.5
+ */
 export type PubRecPacket = {
   type: ControlPacketType.PubRec;
-  // Not implemented
+  packet_identifier: PacketIdentifier;
+  reason_code?: PubRecReasonCode;
+  properties?: {
+    reason_string?: string;
+    user_properties?: UserProperty[];
+  };
 };
 
+/**
+ * 3.6
+ */
 export type PubRelPacket = {
   type: ControlPacketType.PubRel;
-  // Not implemented
+  packet_identifier: PacketIdentifier;
+  reason_code?: PubRelReasonCode;
+  properties?: {
+    reason_string?: string;
+    user_properties?: UserProperty[];
+  };
 };
 
+/**
+ * 3.7
+ */
 export type PubCompPacket = {
   type: ControlPacketType.PubComp;
-  // Not implemented
+  packet_identifier: PacketIdentifier;
+  reason_code?: PubCompReasonCode;
+  properties?: {
+    reason_string?: string;
+    user_properties?: UserProperty[];
+  };
 };
 
 export enum RetainHandling {
@@ -1119,6 +1182,90 @@ export function serializePublishPacket(
 }
 
 /**
+ * 3.4 PUBACK
+ */
+export function serializePubAckPacket(
+  packet: MakeSerializePacketType<PubAckPacket>,
+  w: Writer,
+): Uint8Array {
+  w.addUint16(packet.packet_identifier!);
+  if (
+    packet.reason_code !== PubAckReasonCode.Success ||
+    packet.properties !== undefined
+  ) {
+    w.addUint8(packet.reason_code ?? PubAckReasonCode.Success);
+    w.addProperties(packet.properties, (tw, p) => {
+      tw.addReasonString(p?.reason_string);
+      tw.addUserProperties(p?.user_properties);
+    });
+  }
+  return w.finalizeMessage(ControlPacketType.PubAck, 0);
+}
+
+/**
+ * 3.5 PUBREC
+ */
+export function serializePubRecPacket(
+  packet: MakeSerializePacketType<PubRecPacket>,
+  w: Writer,
+): Uint8Array {
+  w.addUint16(packet.packet_identifier!);
+  if (
+    packet.reason_code !== PubRecReasonCode.Success ||
+    packet.properties !== undefined
+  ) {
+    w.addUint8(packet.reason_code ?? PubAckReasonCode.Success);
+    w.addProperties(packet.properties, (tw, p) => {
+      tw.addReasonString(p?.reason_string);
+      tw.addUserProperties(p?.user_properties);
+    });
+  }
+  return w.finalizeMessage(ControlPacketType.PubRec, 0);
+}
+
+/**
+ * 3.6 PUBREL
+ */
+export function serializePubRelPacket(
+  packet: MakeSerializePacketType<PubRelPacket>,
+  w: Writer,
+): Uint8Array {
+  w.addUint16(packet.packet_identifier!);
+  if (
+    packet.reason_code !== PubRelReasonCode.Success ||
+    packet.properties !== undefined
+  ) {
+    w.addUint8(packet.reason_code ?? PubAckReasonCode.Success);
+    w.addProperties(packet.properties, (tw, p) => {
+      tw.addReasonString(p?.reason_string);
+      tw.addUserProperties(p?.user_properties);
+    });
+  }
+  return w.finalizeMessage(ControlPacketType.PubRel, 0b0010);
+}
+
+/**
+ * 3.7 PUBCOMP
+ */
+export function serializePubCompPacket(
+  packet: MakeSerializePacketType<PubCompPacket>,
+  w: Writer,
+): Uint8Array {
+  w.addUint16(packet.packet_identifier!);
+  if (
+    packet.reason_code !== PubCompReasonCode.Success ||
+    packet.properties !== undefined
+  ) {
+    w.addUint8(packet.reason_code ?? PubAckReasonCode.Success);
+    w.addProperties(packet.properties, (tw, p) => {
+      tw.addReasonString(p?.reason_string);
+      tw.addUserProperties(p?.user_properties);
+    });
+  }
+  return w.finalizeMessage(ControlPacketType.PubComp, 0);
+}
+
+/**
  * 3.8 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901161
  */
 export function serializeSubscribePacket(
@@ -1328,10 +1475,13 @@ export function serialize(packet: AllPacket, w: Writer): Uint8Array {
     case ControlPacketType.Publish:
       return serializePublishPacket(packet, w);
     case ControlPacketType.PubAck:
+      return serializePubAckPacket(packet, w);
     case ControlPacketType.PubRec:
+      return serializePubRecPacket(packet, w);
     case ControlPacketType.PubRel:
+      return serializePubRelPacket(packet, w);
     case ControlPacketType.PubComp:
-      throw new Error("not implemented");
+      return serializePubCompPacket(packet, w);
     case ControlPacketType.Subscribe:
       return serializeSubscribePacket(packet, w);
     case ControlPacketType.SubAck:
@@ -1748,6 +1898,90 @@ function deserializeUnsubscribePacket(
 }
 
 /**
+ * 3.4
+ */
+function deserializePubAckPacket(
+  _fixedHeader: FixedHeader,
+  r: DataReader,
+): PubAckPacket {
+  const ret: PubAckPacket = {
+    type: ControlPacketType.PubAck,
+    packet_identifier: r.getUint16() as PacketIdentifier,
+  };
+  if (r.hasMoreData) {
+    ret.reason_code = r.getUint8();
+    const props = readProperties(r);
+    if (props !== undefined) {
+      ret.properties = props;
+    }
+  }
+  return ret;
+}
+
+/**
+ * 3.5
+ */
+function deserializePubRecPacket(
+  _fixedHeader: FixedHeader,
+  r: DataReader,
+): PubRecPacket {
+  const ret: PubRecPacket = {
+    type: ControlPacketType.PubRec,
+    packet_identifier: r.getUint16() as PacketIdentifier,
+  };
+  if (r.hasMoreData) {
+    ret.reason_code = r.getUint8();
+    const props = readProperties(r);
+    if (props !== undefined) {
+      ret.properties = props;
+    }
+  }
+  return ret;
+}
+
+/**
+ * 3.6
+ */
+function deserializePubRelPacket(
+  _fixedHeader: FixedHeader,
+  r: DataReader,
+): PubRelPacket {
+  const ret: PubRelPacket = {
+    type: ControlPacketType.PubRel,
+    packet_identifier: r.getUint16() as PacketIdentifier,
+  };
+  if (r.hasMoreData) {
+    ret.reason_code = r.getUint8();
+    const props = readProperties(r);
+    if (props !== undefined) {
+      ret.properties = props;
+    }
+  }
+  return ret;
+}
+
+/**
+ * 3.7
+ */
+function deserializePubCompPacket(
+  _fixedHeader: FixedHeader,
+  r: DataReader,
+): PubCompPacket {
+  const ret: PubCompPacket = {
+    type: ControlPacketType.PubComp,
+    packet_identifier: r.getUint16() as PacketIdentifier,
+  };
+  if (r.hasMoreData) {
+    ret.reason_code = r.getUint8();
+    const props = readProperties(r);
+    if (props !== undefined) {
+      ret.properties = props;
+    }
+  }
+  return ret;
+}
+
+/**
  * 3.8 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901161
  */
 function deserializeSubscribePacket(
@@ -1928,13 +2162,13 @@ export function deserializePacket(
     case ControlPacketType.Publish:
       return deserializePublishPacket(fixedHeader, r, options);
     case ControlPacketType.PubAck:
-      break;
+      return deserializePubAckPacket(fixedHeader, r);
     case ControlPacketType.PubRec:
-      break;
+      return deserializePubRecPacket(fixedHeader, r);
     case ControlPacketType.PubRel:
-      break;
+      return deserializePubRelPacket(fixedHeader, r);
     case ControlPacketType.PubComp:
-      break;
+      return deserializePubCompPacket(fixedHeader, r);
     case ControlPacketType.Subscribe:
       return deserializeSubscribePacket(fixedHeader, r);
     case ControlPacketType.SubAck:
