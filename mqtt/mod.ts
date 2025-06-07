@@ -231,6 +231,9 @@ export type Topic = Branded<string, "Topic">;
 export type TopicFilter = Branded<string, "TopicFilter">;
 export type Milliseconds = Branded<number, "Milliseconds">;
 export type Seconds = Branded<number, "Seconds">;
+/**
+ * 0 <= PacketIdentifier <= 65535
+ */
 export type PacketIdentifier = Branded<number, "PacketIdentifier">;
 
 export type UserProperty = { key: string; value: string };
@@ -2172,6 +2175,9 @@ export class Client implements AsyncDisposable {
     );
     if (freePacketIdentifier === -1) {
       freePacketIdentifier = this.#pendingReplies.length;
+      if (freePacketIdentifier > 65535) {
+        throw new Error("Too many pending replies, max is 65535");
+      }
     }
 
     const promise = new Promise<AllPacket>(
