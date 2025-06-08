@@ -103,7 +103,6 @@ export class Serializer {
     this.#addFormat(value ? Formats.boolean_true : Formats.boolean_false);
   }
 
-  // TODO: how to handle unsafe numbers?
   addInt(num: number) {
     if (num >= 0) {
       if (num <= NumericLimits.positive_fixint_max) {
@@ -322,7 +321,6 @@ export class Serializer {
     this.addExt(Extensions.TimeStamp, writer.getBufferView());
   }
 
-  // TODO: is it necessary to skip undefined value and not to transfer them?
   add(
     // deno-lint-ignore no-explicit-any
     arg: any,
