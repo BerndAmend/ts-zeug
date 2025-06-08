@@ -411,7 +411,7 @@ export type ConnectPacket = {
       // payload_format_indicator?: boolean; // 3.1.3.2.3 automatically determined by the type of the payload
       message_expiry_interval?: Seconds; // 3.1.3.2.4
       content_type?: string; // 3.1.3.2.5
-      response_topic?: string; // 3.1.3.2.6
+      response_topic?: Topic; // 3.1.3.2.6
       correlation_data?: DataReader | Uint8Array; // 3.1.3.2.7
       user_properties?: UserProperty[]; // 3.1.3.2.8
     };
