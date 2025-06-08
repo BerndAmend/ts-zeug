@@ -805,6 +805,10 @@ export class Writer extends DataWriter {
     this.addArray(serializedProperties);
   }
 
+  beginMessage() {
+    this.pos = maxFixedHeaderSize;
+  }
+
   finalizeMessage(
     type: ControlPacketType,
     flags: number,
@@ -866,6 +870,7 @@ export function serializeConnectPacket(
   packet: MakeSerializePacketType<ConnectPacket>,
   w: Writer,
 ): Uint8Array {
+  w.beginMessage();
   w.addUTF8String(packet.protocol_name ?? "MQTT");
   w.addUint8(packet.protocol_version ?? 5);
 
@@ -999,6 +1004,7 @@ export function serializeConnAckPacket(
   packet: MakeSerializePacketType<ConnAckPacket>,
   w: Writer,
 ): Uint8Array {
+  w.beginMessage();
   if (
     packet.properties?.server_reference &&
     packet.connect_reason_code !== ConnectReasonCode.Server_moved &&
@@ -1108,6 +1114,7 @@ export function serializePublishPacket(
   packet: MakeSerializePacketType<PublishPacket>,
   w: Writer,
 ): Uint8Array {
+  w.beginMessage();
   const qos = packet.qos ?? QoS.At_most_once_delivery;
 
   w.addUTF8String(packet.topic);
@@ -1188,6 +1195,7 @@ export function serializePubAckPacket(
   packet: MakeSerializePacketType<PubAckPacket>,
   w: Writer,
 ): Uint8Array {
+  w.beginMessage();
   w.addUint16(packet.packet_identifier!);
   if (
     packet.reason_code !== PubAckReasonCode.Success ||
@@ -1209,6 +1217,7 @@ export function serializePubRecPacket(
   packet: MakeSerializePacketType<PubRecPacket>,
   w: Writer,
 ): Uint8Array {
+  w.beginMessage();
   w.addUint16(packet.packet_identifier!);
   if (
     packet.reason_code !== PubRecReasonCode.Success ||
@@ -1230,6 +1239,7 @@ export function serializePubRelPacket(
   packet: MakeSerializePacketType<PubRelPacket>,
   w: Writer,
 ): Uint8Array {
+  w.beginMessage();
   w.addUint16(packet.packet_identifier!);
   if (
     packet.reason_code !== PubRelReasonCode.Success ||
@@ -1251,6 +1261,7 @@ export function serializePubCompPacket(
   packet: MakeSerializePacketType<PubCompPacket>,
   w: Writer,
 ): Uint8Array {
+  w.beginMessage();
   w.addUint16(packet.packet_identifier!);
   if (
     packet.reason_code !== PubCompReasonCode.Success ||
@@ -1272,6 +1283,7 @@ export function serializeSubscribePacket(
   packet: MakeSerializePacketType<SubscribePacket>,
   w: Writer,
 ): Uint8Array {
+  w.beginMessage();
   if (packet.subscriptions.length == 0) {
     throw new Error("Empty subscriptions are not allowed");
   }
@@ -1309,6 +1321,7 @@ export function serializeSubAckPacket(
   packet: MakeSerializePacketType<SubAckPacket>,
   w: Writer,
 ): Uint8Array {
+  w.beginMessage();
   if (packet.reason_codes.length === 0) {
     throw new Error("reason_codes cannot be empty");
   }
@@ -1333,6 +1346,7 @@ export function serializeUnsubscribePacket(
   packet: MakeSerializePacketType<UnsubscribePacket>,
   w: Writer,
 ): Uint8Array {
+  w.beginMessage();
   w.addUint16(packet.packet_identifier);
 
   w.addProperties(packet.properties, (tw: Writer, p) => {
@@ -1358,6 +1372,7 @@ export function serializeUnsubAckPacket(
   packet: MakeSerializePacketType<UnsubAckPacket>,
   w: Writer,
 ): Uint8Array {
+  w.beginMessage();
   if (packet.reason_codes.length === 0) {
     throw new Error("reason_codes cannot be empty");
   }
