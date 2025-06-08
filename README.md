@@ -3,13 +3,14 @@
 Various stuff ("Zeug") for TypeScript, designed for Deno, the web, and partially
 for Node.js. This repository provides:
 
-- An MQTT 5 client implementation (Note: QoS 1/2 are supported but not automatically handled by the client)
+- An MQTT 5 client implementation
 - A feature-complete MsgPack implementation for efficient binary serialization.
 
 ## Features
 
 - **MQTT 5 Client:** Connect to MQTT brokers, publish and subscribe to topics,
-  and handle messages with ease.
+  and handle messages with ease. (Note: QoS 1/2 are supported but not
+  automatically handled by the client)
 - **MsgPack:** Serialize and deserialize JavaScript objects using the efficient
   MessagePack format. It also supports a low level API.
 
@@ -22,7 +23,7 @@ topic, publish a message, and handle incoming messages.
 import { mqtt } from "jsr:@bernd/ts-zeug";
 
 await using client = new mqtt.Client(
-  "tcp://localhost:1883",
+  "mqtt://localhost",
   {
     keepalive: 10 as mqtt.Seconds,
     will: {
@@ -36,7 +37,7 @@ await using client = new mqtt.Client(
 );
 
 // For Chrome, ... you have to use helper.streamAsyncIterator(client.readable)
-readDataLoop: for await (const p of client.readable) {
+for await (const p of client.readable) {
   //mqtt.logPacket(p);
   switch (p.type) {
     case mqtt.ControlPacketType.ConnAck: {
@@ -79,8 +80,6 @@ readDataLoop: for await (const p of client.readable) {
           );
         }
       }
-      // Exit after we received one Publish Packet
-      break readDataLoop;
       break;
     }
     case mqtt.ControlPacketType.Disconnect: {
