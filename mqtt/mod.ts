@@ -976,7 +976,6 @@ export function serializeConnectPacket(
       }
 
       if (p?.response_topic !== undefined) {
-        // TODO: Are empty topics allowed?
         tw.addUint8(Property.Response_Topic);
         tw.addUTF8String(p.response_topic);
       }
@@ -1164,7 +1163,6 @@ export function serializePublishPacket(
     }
 
     if (p?.response_topic !== undefined) {
-      // TODO: Are empty topics allowed?
       tw.addUint8(Property.Response_Topic);
       tw.addUTF8String(p.response_topic);
     }
@@ -1318,7 +1316,6 @@ export function serializeSubscribePacket(
   });
 
   for (const s of packet.subscriptions) {
-    // TODO: does it make sense to have an empty topic filter?
     w.addUTF8String(s.topic);
     const flag = (s.qos ?? 0) |
       (s.no_local ? 0b100 : 0) |
@@ -1376,7 +1373,6 @@ export function serializeUnsubscribePacket(
   }
 
   for (const f of packet.topic_filters) {
-    // TODO: does it make sense to have an empty topic filter?
     w.addUTF8String(f);
   }
 
