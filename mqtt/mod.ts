@@ -1806,7 +1806,7 @@ function deserializeConnectPacket(
     ret.password = readUTF8String(r);
   }
 
-  // TODO: check if only the expected properties existed
+  // Should we check if only the expected properties existed?
   // session_expiry_interval, receive_maximum, maximum_QoS, retain_available,
   // maximum_packet_size, assigned_client_id, topic_alias_maximum, reason_string,
   // user_properties, wildcard_subscription_available, subscription_identifiers_available,
@@ -1836,7 +1836,7 @@ function deserializeConnAckPacket(
     ret.properties = props;
   }
 
-  // TODO: check if only the expected properties existed
+  // Should we check if only the expected properties existed?
   // session_expiry_interval, receive_maximum, maximum_QoS, retain_available,
   // maximum_packet_size, assigned_client_id, topic_alias_maximum, reason_string,
   // user_properties, wildcard_subscription_available, subscription_identifiers_available,
