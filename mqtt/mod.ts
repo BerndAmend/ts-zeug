@@ -302,7 +302,25 @@ export function asTopicFilter(input: string): TopicFilter {
     );
   }
 
-  // TODO: check if a ? or # occur on an invalid position
+  const levels = input.split("/");
+  for (let i = 0; i < levels.length; ++i) {
+    const level = levels[i]!;
+    if (level === "#") {
+      if (i !== levels.length - 1) {
+        throw new Error(
+          `Invalid TopicFilter: '#' must only appear at the last level. Input: '${input}'`,
+        );
+      }
+    } else if (level === "+") {
+      // valid
+    } else {
+      if (level.includes("#") || level.includes("+")) {
+        throw new Error(
+          `Invalid TopicFilter: Wildcards must occupy an entire level. Input: '${input}'`,
+        );
+      }
+    }
+  }
 
   return input as TopicFilter;
 }
