@@ -64,7 +64,7 @@ export enum QoS {
 /**
  * 3.3.2.3.2 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901111
  */
-const enum PayloadFormatIndicator {
+export const enum PayloadFormatIndicator {
   Binary, // default
   UTF8,
 }
@@ -360,7 +360,7 @@ export type FixedHeader = {
 };
 
 export type AllProperties = Partial<{
-  payload_format_indicator: boolean; // 3.3.2.3.2 true==utf8, false==binary
+  payload_format_indicator: PayloadFormatIndicator; // 3.3.2.3.2
   message_expiry_interval: Seconds; // 3.3.2.3.3
   content_type: string; // 3.1.3.2.5
   response_topic: Topic; // 3.3.2.3.5
@@ -408,7 +408,11 @@ export type ConnectPacket = {
     payload?: DataReader | Uint8Array | string; // 3.1.3.4
     properties?: { // 3.1.3.2
       will_delay_interval?: Seconds; // 3.1.3.2.2
-      // payload_format_indicator?: boolean; // 3.1.3.2.3 automatically determined by the type of the payload
+      /**
+       * 3.1.3.2.3 automatically determined by the type of the payload
+       * ignored when serializing
+       */
+      payload_format_indicator?: PayloadFormatIndicator;
       message_expiry_interval?: Seconds; // 3.1.3.2.4
       content_type?: string; // 3.1.3.2.5
       response_topic?: Topic; // 3.1.3.2.6
@@ -474,7 +478,11 @@ export type PublishPacket = {
    */
   payload?: DataReader | string | Uint8Array; // 3.3.3
   properties?: {
-    // payload_format_indicator?: boolean; // 3.3.2.3.2 automatically determined by the type of the payload
+    /**
+     * 3.3.2.3.2 automatically determined by the type of the payload
+     * ignored when serializing
+     */
+    payload_format_indicator?: PayloadFormatIndicator;
     message_expiry_interval?: Seconds; // 3.3.2.3.3
     topic_alias?: number; // 3.3.2.3.4
     response_topic?: Topic; // 3.3.2.3.5
@@ -1628,7 +1636,7 @@ function readProperties(
     const id: Property = r.getUint8();
     switch (id) {
       case Property.Payload_Format_Indicator:
-        ret.payload_format_indicator = r.getUint8() === 1;
+        ret.payload_format_indicator = r.getUint8();
         break;
       case Property.Message_Expiry_Interval:
         ret.message_expiry_interval = r.getUint32() as Seconds;
