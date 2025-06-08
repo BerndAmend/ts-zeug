@@ -1933,9 +1933,14 @@ function deserializePubRecPacket(
  * 3.6
  */
 function deserializePubRelPacket(
-  _fixedHeader: FixedHeader,
+  fixedHeader: FixedHeader,
   r: DataReader,
 ): PubRelPacket {
+  if (fixedHeader.flags !== 0b0010) {
+    throw new Error(
+      `Invalid flags for PubRel packet: ${fixedHeader.flags}, expected 0b0010`,
+    );
+  }
   const ret: PubRelPacket = {
     type: ControlPacketType.PubRel,
     packet_identifier: r.getUint16() as PacketIdentifier,
@@ -1975,16 +1980,20 @@ function deserializePubCompPacket(
  * 3.8 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901161
  */
 function deserializeSubscribePacket(
-  _fixedHeader: FixedHeader,
+  fixedHeader: FixedHeader,
   r: DataReader,
 ): SubscribePacket {
+  if (fixedHeader.flags !== 0b0010) {
+    throw new Error(
+      `Invalid flags for Subscribe packet: ${fixedHeader.flags}, expected 0b0010`,
+    );
+  }
+
   const ret: SubscribePacket = {
     type: ControlPacketType.Subscribe,
     packet_identifier: r.getUint16() as PacketIdentifier,
     subscriptions: [],
   };
-
-  // TODO: check the flags, they should be 0b10
 
   const props = readProperties(r);
   if (props?.subscription_identifier !== undefined) {
