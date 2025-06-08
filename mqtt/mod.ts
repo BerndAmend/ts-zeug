@@ -370,7 +370,7 @@ export type AllProperties = Partial<{
   assigned_client_id: ClientID; // 3.2.2.3.7
   server_keep_alive: Seconds; // 3.2.2.3.14 - defaults to the value send by the client before
   authentication_method: string; // 3.1.2.11.9
-  authentication_data: Uint8Array; // 3.1.2.11.10
+  authentication_data: DataReader | Uint8Array; // 3.1.2.11.10
   request_problem_information: boolean; // 3.1.2.11.7
   will_delay_interval: Seconds; // 3.1.3.2.2
   request_response_information: boolean; // 3.1.2.11.6
@@ -425,7 +425,7 @@ export type ConnectPacket = {
     request_problem_information?: boolean; // 3.1.2.11.7
     user_properties?: UserProperty[]; // 3.1.2.11.8
     authentication_method?: string; // 3.1.2.11.9
-    authentication_data?: Uint8Array; // 3.1.2.11.10
+    authentication_data?: DataReader | Uint8Array; // 3.1.2.11.10
   };
 };
 
@@ -453,7 +453,7 @@ export type ConnAckPacket = {
     response_information?: Topic; // 3.2.2.3.15
     server_reference?: string; // 3.2.2.3.16
     authentication_method?: string; // 3.2.2.3.17
-    authentication_data?: Uint8Array; // 3.2.2.3.18
+    authentication_data?: DataReader | Uint8Array; // 3.2.2.3.18
   };
 };
 
@@ -636,7 +636,7 @@ export type AuthPacket = {
   reason_code?: AuthReasonCode; // 3.15.2.1
   properties?: {
     authentication_method?: string; // 3.15.2.2.2
-    authentication_data?: Uint8Array; // 3.15.2.2.3
+    authentication_data?: DataReader | Uint8Array; // 3.15.2.2.3
     reason_string?: string; // 3.15.2.2.4
     user_properties?: UserProperty[]; // 3.15.2.2.5
   };
