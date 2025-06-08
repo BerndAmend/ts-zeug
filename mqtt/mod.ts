@@ -1176,8 +1176,8 @@ export function serializePublishPacket(
 
     if (p?.subscription_identifier !== undefined) {
       for (const subscription of p.subscription_identifier) {
-        w.addUint8(Property.Subscription_Identifier);
-        w.addVariableByteInteger(subscription);
+        tw.addUint8(Property.Subscription_Identifier);
+        tw.addVariableByteInteger(subscription);
       }
     }
 
