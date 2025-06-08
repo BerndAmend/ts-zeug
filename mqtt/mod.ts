@@ -1866,6 +1866,7 @@ function deserializePublishPacket(
   const qos = (fixedHeader.flags >> 1) & 0b11;
   if (qos !== QoS.At_most_once_delivery) {
     ret.qos = qos;
+    ret.packet_identifier = r.getUint16() as PacketIdentifier;
   }
 
   const props = readProperties(r, options);
