@@ -454,7 +454,7 @@ function deserializeTimestampExtension(reader: DataReader): Date {
 export function deserialize(
   buffer: DataReader | Uint8Array,
   extensionHandler?: (type: number, data: DataReader) => unknown,
-): unknown[] {
+): unknown {
   const reader = buffer instanceof DataReader ? buffer : new DataReader(buffer);
 
   const handleExtension = (type: number, reader: DataReader) => {
@@ -589,10 +589,5 @@ export function deserialize(
     }
   };
 
-  const out = [];
-  while (reader.hasMoreData) {
-    out.push(next());
-  }
-
-  return out;
+  return next();
 }

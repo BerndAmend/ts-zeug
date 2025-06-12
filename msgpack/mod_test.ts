@@ -19,7 +19,7 @@ Deno.test(function serializeTest() {
     if (expected !== undefined) {
       assertEquals(toHexString(r), expected);
     }
-    assertEquals(deserialize(r)[0], expectedOutput ?? input);
+    assertEquals(deserialize(r), expectedOutput ?? input);
   };
 
   doit(true, "c3");
