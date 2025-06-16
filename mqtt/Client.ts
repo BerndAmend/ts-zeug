@@ -371,6 +371,7 @@ export class Client implements AsyncDisposable {
    * A readable stream that emits all packets received from the MQTT server.
    * It also emits CustomPackets, which are used to signal errors or connection issues.
    * The readable stream is closed if the connection was closed locally.
+   * You need to consume this stream!
    */
   get readable(): ReadableStream<AllPacket | CustomPackets> {
     return this.#readable;
