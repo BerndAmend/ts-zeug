@@ -38,7 +38,6 @@ await using client = new mqtt.Client(
 
 // For Chrome, ... you have to use helper.streamAsyncIterator(client.readable)
 for await (const p of client.readable) {
-  //mqtt.logPacket(p);
   switch (p.type) {
     case mqtt.ControlPacketType.ConnAck: {
       if (p.connect_reason_code !== mqtt.ConnectReasonCode.Success) {
@@ -82,18 +81,9 @@ for await (const p of client.readable) {
       }
       break;
     }
-    case mqtt.ControlPacketType.Disconnect: {
-      console.log("%cDisconnect", "color: red", p);
+    default:
+      mqtt.logPacket(p);
       break;
-    }
-    case mqtt.CustomPacketType.ConnectionClosed: {
-      console.log("%cConnectionClosed", "color: red", p);
-      break;
-    }
-    case mqtt.CustomPacketType.Error: {
-      console.error("%cError", "color: red", p);
-      break;
-    }
   }
 }
 
