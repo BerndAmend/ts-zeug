@@ -475,8 +475,8 @@ export class Client implements AsyncDisposable {
             ?.maximum_packet_size;
           this.#source.enqueue(this.#connectAck);
         } else {
-          r.releaseLock();
           this.#writable.releaseLock();
+          r.releaseLock();
           await con.writable.close();
           this.#source.enqueue({
             type: CustomPacketType.FailedConnectionAttempt,
@@ -490,11 +490,11 @@ export class Client implements AsyncDisposable {
         }
       } catch (e: unknown) {
         try {
-          if (con.readable.locked) {
-            r.releaseLock();
-          }
           if (con.writable.locked) {
             this.#writable.releaseLock();
+          }
+          if (con.readable.locked) {
+            r.releaseLock();
           }
           await con.writable.close();
         } catch (_e) {
@@ -652,17 +652,11 @@ export class Client implements AsyncDisposable {
       }
 
       try {
-        await r.closed;
-        if (con.readable.locked) {
-          r.releaseLock();
-        }
-      } catch (_e: unknown) {
-        // This should only happen if the connection was already closed or an error occurred
-      }
-
-      try {
         if (con.writable.locked) {
           this.#writable.releaseLock();
+        }
+        if (con.readable.locked) {
+          r.releaseLock();
         }
         this.#writable = undefined;
         await con.writable.close();
