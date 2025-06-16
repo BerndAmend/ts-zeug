@@ -53,13 +53,9 @@ export const DefaultClientProperties: Required<ClientProperties> = {
 export enum CustomPacketType {
   ConnectionClosed = 100,
   FailedConnectionAttempt = 101,
+  PingFailed = 102,
+  CloseLocally = 103,
   Error = 200,
-}
-
-export enum ConnectionClosedReason {
-  ClosedLocally,
-  ClosedRemotely,
-  PingFailed,
 }
 
 export type CustomPackets = {
@@ -68,26 +64,43 @@ export type CustomPackets = {
     | CustomPacketType.FailedConnectionAttempt;
   msg?: string | Error;
 } | {
-  type: CustomPacketType.ConnectionClosed;
-  reason: ConnectionClosedReason;
+  type:
+    | CustomPacketType.ConnectionClosed
+    | CustomPacketType.PingFailed
+    | CustomPacketType.CloseLocally;
 };
 
 export function logPacket(packet: AllPacket | CustomPackets) {
-  if (packet.type === ControlPacketType.Disconnect) {
-    console.log(
-      ControlPacketType[packet.type],
-      DisconnectReasonCode[
-        packet.reason_code ?? DisconnectReasonCode.Normal_disconnection
-      ],
-      packet,
-    );
-  } else {
-    console.log(
-      (packet.type < 100)
-        ? ControlPacketType[packet.type]
-        : CustomPacketType[packet.type],
-      packet,
-    );
+  switch (packet.type) {
+    case ControlPacketType.Disconnect: {
+      console.error(
+        `%c${ControlPacketType[packet.type]}`,
+        "color: red",
+        DisconnectReasonCode[
+          packet.reason_code ?? DisconnectReasonCode.Normal_disconnection
+        ],
+        packet,
+      );
+      break;
+    }
+    case CustomPacketType.ConnectionClosed:
+    case CustomPacketType.CloseLocally:
+    case CustomPacketType.PingFailed:
+      console.error(
+        `%c${CustomPacketType[packet.type]}`,
+        "color: red",
+      );
+      break;
+    case CustomPacketType.Error:
+    case CustomPacketType.FailedConnectionAttempt:
+      console.error(
+        `%c${CustomPacketType[packet.type]}`,
+        "color: red",
+        packet.msg,
+      );
+      break;
+    default:
+      console.log(ControlPacketType[packet.type], packet);
   }
 }
 
@@ -278,13 +291,6 @@ export class Client implements AsyncDisposable {
 
   #lastPingRespReceived = 0;
 
-  #closePromiseFulFill?: (
-    value: { done: true; value: ConnectionClosedReason.ClosedLocally },
-  ) => void;
-  #closePromiseFulFillPromise?: Promise<
-    { done: true; value: ConnectionClosedReason.ClosedLocally }
-  >;
-
   #pendingReplies: ({
     resolve: (value: AllPacket) => void;
     reject: (err: Error) => void;
@@ -384,11 +390,6 @@ export class Client implements AsyncDisposable {
     if (this.#messageHandlerPromise) {
       throw new Error("open was already called");
     }
-    this.#closePromiseFulFillPromise = new Promise(
-      (resolve) => {
-        this.#closePromiseFulFill = resolve;
-      },
-    );
     this.#active = true;
     this.#messageHandlerPromise = this.#handleMessages();
   }
@@ -404,6 +405,7 @@ export class Client implements AsyncDisposable {
       return;
     }
     this.#active = false;
+    this.#source.enqueue({ type: CustomPacketType.CloseLocally });
     try {
       await this.#writable.write(
         serializeDisconnectPacket(disconnectPacket ?? {}, this.#writer),
@@ -411,13 +413,9 @@ export class Client implements AsyncDisposable {
     } catch {
       // The connection could already be closed
     }
-    this.#closePromiseFulFill!({
-      done: true,
-      value: ConnectionClosedReason.ClosedLocally,
-    });
     await this.#messageHandlerPromise;
-    this.#source.close();
 
+    this.#source.close();
     this.#source = new ClientSource();
     this.#readable = new ReadableStream<AllPacket | CustomPackets>(
       this.#source,
@@ -519,19 +517,6 @@ export class Client implements AsyncDisposable {
         continue; // retry connecting
       }
 
-      let pingFailed: (
-        value: {
-          done: true;
-          value: ConnectionClosedReason.PingFailed;
-        },
-      ) => void;
-      const pingFailedPromise = new Promise<
-        { done: true; value: ConnectionClosedReason.PingFailed }
-      >(
-        (resolve) => {
-          pingFailed = resolve;
-        },
-      );
       // ping
       // 3.1.2.10 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901045
       if (
@@ -570,13 +555,16 @@ export class Client implements AsyncDisposable {
               console.log("Couldn't send ping, close connection", e);
             }
           }
-          pingFailed({
-            done: true,
-            value: ConnectionClosedReason.PingFailed,
+          this.#source.enqueue({
+            type: CustomPacketType.PingFailed,
           });
+
           try {
             if (this.#writable && con.writable.locked) {
               this.#writable.releaseLock();
+            }
+            if (this.#readable && con.readable.locked) {
+              r.releaseLock();
             }
             await con.writable.close();
           } catch (e) {
@@ -585,25 +573,12 @@ export class Client implements AsyncDisposable {
         }, keep_alive * 1000 - 100); // 100 is randomly selected to ensure we stay below the keep_alive time
       }
 
-      let connectionClosedPacket: CustomPackets;
-
       try {
         dispatchLoop: while (true) {
           // Read from the stream
-          const { done, value } = await Promise.race([
-            r.read(),
-            pingFailedPromise,
-            this.#closePromiseFulFillPromise!,
-          ]);
-          // Exit if we're done
+          const { done, value } = await r.read();
+
           if (done) {
-            connectionClosedPacket = {
-              type: CustomPacketType.ConnectionClosed,
-              reason: (value === ConnectionClosedReason.ClosedLocally ||
-                  value === ConnectionClosedReason.PingFailed)
-                ? value
-                : ConnectionClosedReason.ClosedRemotely,
-            };
             break;
           }
           // Else yield the chunk
@@ -641,10 +616,6 @@ export class Client implements AsyncDisposable {
         }
       } catch (_e: unknown) {
         // The stream was closed, we can ignore this error, e.g. network error
-        connectionClosedPacket = {
-          type: CustomPacketType.ConnectionClosed,
-          reason: ConnectionClosedReason.ClosedRemotely,
-        };
       }
 
       if (this.#pingIntervalId) {
@@ -667,7 +638,7 @@ export class Client implements AsyncDisposable {
 
       this.#clearPendingReplies(new Error("connection closed"));
 
-      this.#source.enqueue(connectionClosedPacket);
+      this.#source.enqueue({ type: CustomPacketType.ConnectionClosed });
     }
   }
 
