@@ -368,6 +368,12 @@ export class Client implements AsyncDisposable {
    * The connection is established automatically.
    * If the connection fails, it will retry to connect after the reconnectTime.
    * If the connection was closed with close(), you have to call open() to re-open the connection.
+   * Supported protocols:
+   *   TCP: mqtt://hostname[:port], tcp://hostname[:port]
+   *   TLS: mqtts://hostname[:port], tls://hostname[:port]
+   *   WebSocket: ws://hostname[:port], any valid url e.g. ws://server/some/endpoint
+   *   WebSockets over SSL/TLS: wss://hostname[:port], any valid url e.g. wss://server/some/endpoint
+   *   Unix Domain Socket: unix:///tmp/mosquitto.sock
    * @param address the address of the MQTT server to connect to, e.g. "mqtt://localhost" or "ws://localhost/mqtt"
    * @param connectPacket the connect packet that is sent to the MQTT server. An Empty object is used if not provided.
    * @param properties Values that are not set are set to DefaultClientProperties.
