@@ -236,6 +236,20 @@ export async function connectLowLevel(
   }
   if (
     typeof Deno !== "undefined" &&
+    (address.protocol === "tls:" || address.protocol === "mqtts:")
+  ) {
+    const conn = await Deno.connectTls({
+      hostname: address.hostname,
+      port: address.port === "" ? 8883 : Number.parseInt(address.port),
+    });
+
+    return {
+      readable: conn.readable.pipeThrough(ts),
+      writable: conn.writable,
+    };
+  }
+  if (
+    typeof Deno !== "undefined" &&
     (address.protocol === "unix:")
   ) {
     const conn = await Deno.connect({
