@@ -401,15 +401,17 @@ export class Client implements AsyncDisposable {
    * @returns when the connection was closed
    */
   async close(disconnectPacket?: DisconnectPacket) {
-    if (this.#writable === undefined) {
+    if (!this.#messageHandlerPromise) {
       return;
     }
     this.#active = false;
     this.#source.enqueue({ type: CustomPacketType.CloseLocally });
     try {
-      await this.#writable.write(
-        serializeDisconnectPacket(disconnectPacket ?? {}, this.#writer),
-      );
+      if (this.#writable) {
+        await this.#writable.write(
+          serializeDisconnectPacket(disconnectPacket ?? {}, this.#writer),
+        );
+      }
     } catch {
       // The connection could already be closed
     }
@@ -420,6 +422,7 @@ export class Client implements AsyncDisposable {
     this.#readable = new ReadableStream<AllPacket | CustomPackets>(
       this.#source,
     );
+    this.#messageHandlerPromise = undefined;
   }
 
   /**
