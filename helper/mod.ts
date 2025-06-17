@@ -288,6 +288,10 @@ export class DataWriter {
     return this.bytes.subarray(begin ?? 0, end ?? this.pos);
   }
 
+  getCopy(begin?: number, end?: number): Uint8Array {
+    return this.bytes.slice(begin ?? 0, end ?? this.pos);
+  }
+
   ensureBufferSize(appendLength: number): void {
     if (!this.automaticallyExtendBuffer) {
       return;

@@ -169,7 +169,7 @@ export class Writer extends DataWriter {
     this.addUint8(type << 4 | flags);
     this.addVariableByteInteger(size);
     this.pos = maxFixedHeaderSize;
-    return this.getBufferView(start, endPos);
+    return this.getCopy(start, endPos);
   }
 
   get maximumPacketSize(): number {
