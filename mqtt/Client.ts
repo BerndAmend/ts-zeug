@@ -234,6 +234,21 @@ export async function connectLowLevel(
       writable: conn.writable,
     };
   }
+  if (
+    typeof Deno !== "undefined" &&
+    (address.protocol === "unix:")
+  ) {
+    const conn = await Deno.connect({
+      path: address.pathname,
+      transport: "unix",
+    });
+
+    return {
+      readable: conn.readable.pipeThrough(ts),
+      writable: conn.writable,
+    };
+  }
+
   throw new Error(`Unsupported protocol ${address.protocol}`);
 }
 
