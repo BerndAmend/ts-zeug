@@ -651,11 +651,11 @@ export class Client implements AsyncDisposable {
   async publish(
     packet: MakeSerializePacketType<PublishPacket>,
   ) {
-    const msg = serializePublishPacket(packet, this.#writer);
     if (this.#writable === undefined) {
       throw new Error("not connected");
     }
 
+    const msg = serializePublishPacket(packet, this.#writer);
     await this.#writable.write(msg);
   }
 
