@@ -580,6 +580,9 @@ export class Client implements AsyncDisposable {
           );
         }
         this.#pingIntervalId = setInterval(async () => {
+          if (!this.#writable) {
+            return;
+          }
           const msSinceLastPingResp = Date.now() - this.#lastPingRespReceived;
           if (msSinceLastPingResp > (keep_alive! * 1000 * 1.5)) {
             // console.log(
@@ -587,7 +590,7 @@ export class Client implements AsyncDisposable {
             // );
           } else {
             try {
-              await this.#writable!.write(PingReqMessage);
+              await this.#writable.write(PingReqMessage);
               return;
             } catch (e) {
               console.log("Couldn't send ping, close connection", e);
