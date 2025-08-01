@@ -6,16 +6,16 @@
   "configurations": [
     {
       "request": "launch",
-      "name": "Launch Program",
+      "name": "Launch MQTT Client",
       "type": "node",
       "program": "${workspaceFolder}/mqtt-client.ts",
       "cwd": "${workspaceFolder}",
-      "runtimeExecutable": "~/.deno/bin/deno",
+      "runtimeExecutable": "deno",
+      "experimentalNetworking": "off",
       "runtimeArgs": [
         "run",
-        "--unstable",
-        "--inspect-wait",
-        "--allow-all"
+        "--allow-all",
+        "--inspect-wait"
       ],
       "attachSimplePort": 9229
     }
