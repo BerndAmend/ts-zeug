@@ -560,7 +560,7 @@ export function serializePubRecPacket(
     packet.reason_code !== PubRecReasonCode.Success ||
     packet.properties !== undefined
   ) {
-    w.addUint8(packet.reason_code ?? PubAckReasonCode.Success);
+    w.addUint8(packet.reason_code ?? PubRecReasonCode.Success);
     w.addProperties(packet.properties, (tw, p) => {
       tw.addReasonString(p?.reason_string);
       tw.addUserProperties(p?.user_properties);
@@ -582,7 +582,7 @@ export function serializePubRelPacket(
     packet.reason_code !== PubRelReasonCode.Success ||
     packet.properties !== undefined
   ) {
-    w.addUint8(packet.reason_code ?? PubAckReasonCode.Success);
+    w.addUint8(packet.reason_code ?? PubRelReasonCode.Success);
     w.addProperties(packet.properties, (tw, p) => {
       tw.addReasonString(p?.reason_string);
       tw.addUserProperties(p?.user_properties);
@@ -604,7 +604,7 @@ export function serializePubCompPacket(
     packet.reason_code !== PubCompReasonCode.Success ||
     packet.properties !== undefined
   ) {
-    w.addUint8(packet.reason_code ?? PubAckReasonCode.Success);
+    w.addUint8(packet.reason_code ?? PubCompReasonCode.Success);
     w.addProperties(packet.properties, (tw, p) => {
       tw.addReasonString(p?.reason_string);
       tw.addUserProperties(p?.user_properties);
