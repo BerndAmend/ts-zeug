@@ -469,7 +469,7 @@ export class Client implements AsyncDisposable {
       try {
         con = await connectLowLevel(this.address, this.properties);
       } catch (e: unknown) {
-        if (e instanceof Error) {
+        if (Error.isError(e)) {
           this.#source.enqueue({
             type: CustomPacketType.FailedConnectionAttempt,
             msg: e,
@@ -537,7 +537,7 @@ export class Client implements AsyncDisposable {
         } catch (_e) {
           //          console.error("Couldn't close connection", e);
         }
-        if (e instanceof Error) {
+        if (Error.isError(e)) {
           this.#source.enqueue({
             type: CustomPacketType.FailedConnectionAttempt,
             msg: e,
