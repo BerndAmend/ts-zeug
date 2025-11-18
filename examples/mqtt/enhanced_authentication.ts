@@ -1,16 +1,17 @@
 /**
  * Copyright 2023-2025 Bernd Amend. MIT license.
  */
-import { mqtt } from "./mod.ts";
+import { mqtt } from "@bernd/ts-zeug";
 
 await using client = new mqtt.Client(
   "mqtt://localhost",
   {
     keepalive: 10 as mqtt.Seconds,
-    // will: {
-    //   topic: mqtt.asTopic("hi"),
-    //   retain: true,
-    // },
+    username: "some_user",
+    client_id: mqtt.asClientID("some_client"),
+    properties: {
+      authentication_method: "something",
+    },
   },
   {
     publishDeserializeOptions: mqtt.PublishDeserializeOptions.UTF8String,
@@ -22,10 +23,22 @@ Deno.addSignalListener("SIGINT", () => {
   client.close();
 });
 
-// For Chrome, ... you have to use helper.streamAsyncIterator(client.readable)
 try {
   for await (const p of client.readable) {
     switch (p.type) {
+      case mqtt.ControlPacketType.Auth:
+        mqtt.logPacket(p);
+        if (p.reason_code !== mqtt.AuthReasonCode.Continue_authentication) {
+          console.error("got an unexpected reason_code in an auth packet", p);
+          break;
+        }
+        if (!p.properties?.authentication_data) {
+          console.error("got an auth packet without authentication data", p);
+          break;
+        }
+        await client.auth(p);
+
+        break;
       case mqtt.ControlPacketType.ConnAck: {
         mqtt.logPacket(p);
         if (p.connect_reason_code !== mqtt.ConnectReasonCode.Success) {
@@ -52,7 +65,7 @@ try {
         }
         break;
       }
-      case mqtt.ControlPacketType.Publish: {
+      case mqtt.ControlPacketType.Publish:
         if (p.payload === undefined) {
           console.log(
             `%c${p.topic}`,
@@ -74,7 +87,6 @@ try {
           }
         }
         break;
-      }
       default:
         mqtt.logPacket(p);
         break;

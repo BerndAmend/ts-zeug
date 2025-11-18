@@ -5,8 +5,10 @@ import { DataReader, deadline, delay } from "../helper/mod.ts";
 import { streamifyWebSocket } from "../helper/websocket.ts";
 import {
   type AllPacket,
+  type AuthPacket,
   type ConnAckPacket,
   type ConnectPacket,
+  ConnectReasonCode,
   ControlPacketType,
   type DisconnectPacket,
   DisconnectReasonCode,
@@ -24,6 +26,7 @@ import {
   type MakeSerializePacketType,
   type OmitPacketType,
   PingReqMessage,
+  serializeAuthPacket,
   serializeConnectPacket,
   serializeDisconnectPacket,
   serializePublishPacket,
@@ -464,7 +467,7 @@ export class Client implements AsyncDisposable {
    * @returns a promise that resolves when the connection was closed
    */
   async #handleMessages() {
-    while (this.#active) {
+    loop: while (this.#active) {
       let con: LowLevelConnection;
       try {
         con = await connectLowLevel(this.address, this.properties);
@@ -494,36 +497,63 @@ export class Client implements AsyncDisposable {
         this.#writable.write(
           serializeConnectPacket(this.#connectPacket, this.#writer),
         );
-        const d = await deadline(r.read(), 1000);
-        if (d && !d.done && d.value.type === ControlPacketType.ConnAck) {
-          this.#connectAck = d.value;
-          if (this.#connectPacket.client_id === undefined) {
-            const assigned_client_id = this.#connectAck?.properties
-              ?.assigned_client_id;
-            if (assigned_client_id === undefined) {
-              console.error(
-                "No client_id was provided and the server didn't assign one to us",
-              );
-            } else {
-              this.#connectPacket.client_id = assigned_client_id;
+        while (true) {
+          const d = await deadline(r.read(), 1000);
+          if (d && !d.done) {
+            if (d.value.type === ControlPacketType.ConnAck) {
+              this.#connectAck = d.value;
+              if (
+                this.#connectAck.connect_reason_code !==
+                  ConnectReasonCode.Success
+              ) {
+                this.#source.enqueue(this.#connectAck);
+                this.#writable.releaseLock();
+                r.releaseLock();
+                await con.writable.close();
+                this.#source.enqueue({
+                  type: CustomPacketType.FailedConnectionAttempt,
+                  msg: "See connectAck reason, no reconnect attempts",
+                });
+                break loop;
+              }
+              if (this.#connectPacket.client_id === undefined) {
+                const assigned_client_id = this.#connectAck?.properties
+                  ?.assigned_client_id;
+                if (assigned_client_id === undefined) {
+                  console.error(
+                    "No client_id was provided and the server didn't assign one to us",
+                  );
+                } else {
+                  this.#connectPacket.client_id = assigned_client_id;
+                }
+              }
+              this.#writer.maximumPacketSize = this.#connectAck?.properties
+                ?.maximum_packet_size;
+              this.#source.enqueue(this.#connectAck);
+              break;
+            } else if (d.value.type === ControlPacketType.Auth) {
+              if (!this.#connectPacket.properties?.authentication_method) {
+                console.error(
+                  "The server has send an unexpected auth packet, auth packet are only allowed if the connect packet contains an authentication_method",
+                );
+              }
+              // The auth handler is responsible to the auth packet
+              this.#source.enqueue(d.value);
             }
+          } else {
+            this.#writable.releaseLock();
+            r.releaseLock();
+            await con.writable.close();
+            this.#source.enqueue({
+              type: CustomPacketType.FailedConnectionAttempt,
+              msg: "No ConnAck",
+            });
+            await delay(
+              this.properties?.reconnectTime ??
+                DefaultClientProperties.reconnectTime,
+            );
+            continue loop; // retry connecting
           }
-          this.#writer.maximumPacketSize = this.#connectAck?.properties
-            ?.maximum_packet_size;
-          this.#source.enqueue(this.#connectAck);
-        } else {
-          this.#writable.releaseLock();
-          r.releaseLock();
-          await con.writable.close();
-          this.#source.enqueue({
-            type: CustomPacketType.FailedConnectionAttempt,
-            msg: "No ConnAck",
-          });
-          await delay(
-            this.properties?.reconnectTime ??
-              DefaultClientProperties.reconnectTime,
-          );
-          continue; // retry connecting
         }
       } catch (e: unknown) {
         try {
@@ -697,6 +727,24 @@ export class Client implements AsyncDisposable {
     }
 
     const msg = serializePublishPacket(packet, this.#writer);
+    await this.#writable.write(msg);
+  }
+
+  /**
+   * Sends an AUTH packet to the MQTT server.
+   * https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901256
+   * @param packet the auth packet to send
+   * @returns a promise that resolves when the message was sent
+   * @throws if the connection is not connected or the write fails
+   */
+  async auth(
+    packet: MakeSerializePacketType<AuthPacket>,
+  ) {
+    if (this.#writable === undefined) {
+      throw new Error("not connected");
+    }
+
+    const msg = serializeAuthPacket(packet, this.#writer);
     await this.#writable.write(msg);
   }
 
