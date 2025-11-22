@@ -752,6 +752,7 @@ export function serializeDisconnectPacket(
   packet: MakeSerializePacketType<DisconnectPacket>,
   w: Writer,
 ): Uint8Array {
+  w.beginMessage();
   const reason_code = packet.reason_code ??
     DisconnectReasonCode.Normal_disconnection;
   if (
@@ -786,6 +787,7 @@ export function serializeAuthPacket(
   packet: MakeSerializePacketType<AuthPacket>,
   w: Writer,
 ): Uint8Array {
+  w.beginMessage();
   const reason_code = packet.reason_code ?? AuthReasonCode.Success;
   if (
     reason_code === AuthReasonCode.Success && packet.properties === undefined
