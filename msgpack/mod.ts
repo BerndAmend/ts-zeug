@@ -508,7 +508,7 @@ export function deserialize(
       return handleArray((format as number) & 0b1111);
     }
 
-    if ((format & 0b1010_0000) === Formats.fixstr_start) {
+    if ((format & 0b1110_0000) === Formats.fixstr_start) {
       return reader.getUTF8String(format & 0b1_1111);
     }
 
