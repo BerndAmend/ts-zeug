@@ -494,7 +494,7 @@ export class Client implements AsyncDisposable {
       this.#writable = con.writable.getWriter();
       const r = con.readable.getReader();
       try {
-        this.#writable.write(
+        await this.#writable.write(
           serializeConnectPacket(this.#connectPacket, this.#writer),
         );
         while (true) {
