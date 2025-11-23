@@ -42,16 +42,43 @@ export class WebSocketSink {
   }
 
   start(controller: WritableStreamDefaultController): Promise<void> {
-    this._ws.onclose = () =>
+    this._ws.onclose = () => {
       controller.error(
         new Error("The server closed the connection unexpectedly!"),
       );
+    };
     this._ws.addEventListener("error", () => {
       controller.error(new Error("The WebSocket errored!"));
       this._ws.onclose = null;
     });
 
-    return new Promise((resolve) => this._ws.onopen = () => resolve());
+    if (this._ws.readyState === WebSocket.OPEN) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve, reject) => {
+      const cleanup = () => {
+        this._ws.removeEventListener("open", onOpen);
+        this._ws.removeEventListener("error", onError);
+        this._ws.removeEventListener("close", onClose);
+      };
+
+      const onOpen = () => {
+        cleanup();
+        resolve();
+      };
+      const onError = () => {
+        cleanup();
+        reject(new Error("The WebSocket errored!"));
+      };
+      const onClose = () => {
+        cleanup();
+        reject(new Error("The connection was closed!"));
+      };
+
+      this._ws.addEventListener("open", onOpen);
+      this._ws.addEventListener("error", onError);
+      this._ws.addEventListener("close", onClose);
+    });
   }
 
   write(chunk: string | ArrayBufferLike | Blob | ArrayBufferView) {

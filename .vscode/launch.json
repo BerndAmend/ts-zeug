@@ -6,9 +6,9 @@
   "configurations": [
     {
       "request": "launch",
-      "name": "Launch MQTT Client",
+      "name": "Launch example MQTT Viewer",
       "type": "node",
-      "program": "${workspaceFolder}/mqtt-client.ts",
+      "program": "${workspaceFolder}/examples/mqtt/viewer.ts",
       "cwd": "${workspaceFolder}",
       "runtimeExecutable": "deno",
       "experimentalNetworking": "off",
