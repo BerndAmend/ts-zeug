@@ -69,6 +69,7 @@ Deno.test("DataWriter and DataReader: all types roundtrip", () => {
   // BigUint for reading them with getBigUintOrUint64
   writer.addBigUint64(2n ** 64n - 1n);
   writer.addBigUint64(2n ** 52n);
+  writer.addBigUint64(2n ** 53n - 1n);
   // BigInt for reading them with getBigIntOrInt64
   writer.addBigInt64(2n ** 63n - 1n);
   writer.addBigInt64(2n ** 52n);
@@ -120,6 +121,7 @@ Deno.test("DataWriter and DataReader: all types roundtrip", () => {
 
   assertEquals(reader.getBigUintOrUint64(), 2n ** 64n - 1n);
   assertEquals(reader.getBigUintOrUint64(), 2 ** 52);
+  assertEquals(reader.getBigUintOrUint64(), 2 ** 53 - 1);
 
   assertEquals(reader.getBigIntOrInt64(), 2n ** 63n - 1n);
   assertEquals(reader.getBigIntOrInt64(), 2 ** 52);

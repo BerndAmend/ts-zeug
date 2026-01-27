@@ -167,9 +167,10 @@ export class DataReader {
   getBigUintOrUint64(): number | bigint {
     const pos = this.#getReadPosition(8);
     const high = this.#view.getUint32(pos);
-    // Checks if the value is a safe integer (<= 2 ** 53)
-    // If the high part is less or equal than 2**21, we can safely return a number without losing precision.
-    if (high <= 0x200_000) {
+    // Checks if the value is a safe integer (<= 2 ** 53 - 1)
+    // MAX_SAFE_INTEGER (2^53 - 1) has high 0x1FFFFF, which is < 0x200_000.
+    // 2^53 (high 0x200_000) is unsafe.
+    if (high < 0x200_000) {
       const low = this.#view.getUint32(pos + 4);
       return high * 0x1_0000_0000 + low;
     }
@@ -180,11 +181,20 @@ export class DataReader {
   getBigIntOrInt64(): number | bigint {
     const pos = this.#getReadPosition(8);
     const high = this.#view.getInt32(pos);
-    // Checks if the value is a safe integer (< 2 ** 53)
-    // If the high part is less than 2**21, we can safely return a number without losing precision.
-    if (high >= -0x200_000 && high <= 0x200_000) {
+    // Checks if the value is a safe integer
+    // MAX_SAFE_INTEGER (high 0x1FFFFF) is < 0x200_000.
+    // > -0x200_000 handles down to -(2^53 - 2^32).
+    if (high > -0x200_000 && high < 0x200_000) {
       const low = this.#view.getUint32(pos + 4);
       return high * 0x1_0000_0000 + low;
+    }
+    // MIN_SAFE_INTEGER is -(2^53 - 1). High is -0x200_000, Low is 1.
+    // -2^53 (high -0x200_000, low 0) is unsafe.
+    if (high === -0x200_000) {
+      const low = this.#view.getUint32(pos + 4);
+      if (low !== 0) {
+        return high * 0x1_0000_0000 + low;
+      }
     }
     this.#pos -= 8;
     return this.getBigInt64();
