@@ -23,9 +23,13 @@ export class WebSocketSource {
 
   start(controller: ReadableStreamDefaultController) {
     this._ws.onmessage = (event) => controller.enqueue(event.data);
-    this._ws.onclose = () => controller.close();
+    const onClose = () => controller.close();
+    this._ws.addEventListener("close", onClose, {
+      once: true,
+    });
 
     this._ws.addEventListener("error", () => {
+      this._ws.removeEventListener("close", onClose);
       controller.error(new Error("The WebSocket errored!"));
     });
   }
@@ -42,14 +46,13 @@ export class WebSocketSink {
   }
 
   start(controller: WritableStreamDefaultController): Promise<void> {
-    this._ws.onclose = () => {
+    this._ws.addEventListener("close", () => {
       controller.error(
         new Error("The server closed the connection unexpectedly!"),
       );
-    };
+    }, { once: true });
     this._ws.addEventListener("error", () => {
       controller.error(new Error("The WebSocket errored!"));
-      this._ws.onclose = null;
     });
 
     if (this._ws.readyState === WebSocket.OPEN) {
@@ -95,13 +98,13 @@ export class WebSocketSink {
 
   _closeWS(code?: number, reasonString?: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      this._ws.onclose = (e) => {
+      this._ws.addEventListener("close", (e) => {
         if (e.wasClean) {
           resolve();
         } else {
           reject(new Error("The connection was not closed cleanly"));
         }
-      };
+      }, { once: true });
       this._ws.close(code, reasonString);
     });
   }
