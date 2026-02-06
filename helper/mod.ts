@@ -7,12 +7,20 @@ export type Buffer =
   | ArrayLike<number>
   | Uint8Array
   | ArrayBufferView
-  | ArrayBuffer;
+  | ArrayBuffer
+  | SharedArrayBuffer;
 
 export const __brand: unique symbol = Symbol("__brand");
 export type Brand<B> = { [__brand]: B };
 export type Branded<T, B> = T & Brand<B>;
 
+/**
+ * Converts various buffer types to a Uint8Array.
+ * For ArrayBufferView, this returns a view with the same underlying buffer.
+ * For ArrayLike<number>, this creates a copy.
+ * @param buffer - The input buffer to convert
+ * @returns A Uint8Array representing the buffer contents
+ */
 export function intoUint8Array(
   buffer: Buffer,
 ): Uint8Array {
@@ -20,7 +28,9 @@ export function intoUint8Array(
     return buffer;
   } else if (ArrayBuffer.isView(buffer)) {
     return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
-  } else if (buffer instanceof ArrayBuffer) {
+  } else if (
+    buffer instanceof ArrayBuffer || buffer instanceof SharedArrayBuffer
+  ) {
     return new Uint8Array(buffer);
   } else {
     return Uint8Array.from(buffer);

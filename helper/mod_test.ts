@@ -193,3 +193,34 @@ Deno.test("DataReader: subarray and slice", () => {
   assertEquals(reader.getUint8(), 4);
   assertEquals(reader.getUint8(), 5);
 });
+
+Deno.test("intoUint8Array works for SharedArrayBuffer", () => {
+  const sab = new SharedArrayBuffer(4);
+  const view = new Uint8Array(sab);
+  view.set([10, 20, 30, 40]);
+  const result = intoUint8Array(sab);
+  assertEquals(Array.from(result), [10, 20, 30, 40]);
+});
+
+Deno.test("DataWriter and DataReader: large buffer handling", () => {
+  const size = 100_000;
+  const writer = new DataWriter({
+    bufferSize: 16,
+    automaticallyExtendBuffer: true,
+  });
+
+  // Write a large amount of data
+  for (let i = 0; i < size; i++) {
+    writer.addUint8(i & 0xff);
+  }
+
+  assertEquals(writer.pos, size);
+  const buf = writer.getBufferView();
+  assertEquals(buf.length, size);
+
+  const reader = new DataReader(buf);
+  for (let i = 0; i < size; i++) {
+    assertEquals(reader.getUint8(), i & 0xff);
+  }
+  assertEquals(reader.hasMoreData, false);
+});
