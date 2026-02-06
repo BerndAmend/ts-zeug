@@ -31,7 +31,7 @@ export class WebSocketSource {
     this._ws.addEventListener("error", () => {
       this._ws.removeEventListener("close", onClose);
       controller.error(new Error("The WebSocket errored!"));
-    });
+    }, { once: true });
   }
 
   cancel() {
