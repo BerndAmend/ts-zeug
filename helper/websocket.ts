@@ -1,5 +1,5 @@
 /**
- * Copyright 2023-2025 Bernd Amend. BSD-3 license.
+ * Copyright 2023-2026 Bernd Amend. BSD-3 license.
  * For environments that don't have a WebSocketStream we use the implementation from https://streams.spec.whatwg.org/#example-both
  */
 export function streamifyWebSocket(

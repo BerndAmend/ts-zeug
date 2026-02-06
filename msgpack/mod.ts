@@ -1,5 +1,5 @@
 /**
- * Copyright 2023-2025 Bernd Amend. MIT license.
+ * Copyright 2023-2026 Bernd Amend. MIT license.
  * Implementation of msgpack as described in https://github.com/msgpack/msgpack/blob/master/spec.md
  */
 import { DataReader, DataWriter, intoUint8Array } from "../helper/mod.ts";

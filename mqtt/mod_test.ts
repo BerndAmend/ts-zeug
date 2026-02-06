@@ -1,5 +1,5 @@
 /**
- * Copyright 2025 Bernd Amend. MIT license.
+ * Copyright 2023-2026 Bernd Amend. MIT license.
  */
 import { assertEquals, assertThrows } from "@std/assert";
 import { DataReader } from "../helper/mod.ts";

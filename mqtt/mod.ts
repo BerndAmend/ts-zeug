@@ -1,5 +1,5 @@
 /**
- * Copyright 2023-2025 Bernd Amend. MIT license.
+ * Copyright 2023-2026 Bernd Amend. MIT license.
  */
 export * from "./packets.ts";
 export * from "./serialize.ts";
