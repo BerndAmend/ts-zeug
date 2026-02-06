@@ -1,5 +1,8 @@
 # ts-zeug
 
+[![Deno CI](https://github.com/BerndAmend/ts-zeug/actions/workflows/deno.yml/badge.svg)](https://github.com/BerndAmend/ts-zeug/actions/workflows/deno.yml)
+[![JSR](https://jsr.io/badges/@bernd/ts-zeug)](https://jsr.io/@bernd/ts-zeug)
+
 Various stuff ("Zeug") for TypeScript, designed for Deno, the web, and partially
 for Node.js. This repository provides:
 
