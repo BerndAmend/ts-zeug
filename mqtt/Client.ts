@@ -1,7 +1,7 @@
 /**
  * Copyright 2023-2026 Bernd Amend. MIT license.
  */
-import { DataReader, deadline, delay } from "../helper/mod.ts";
+import { deadline, delay } from "../helper/mod.ts";
 import { streamifyWebSocket } from "../helper/websocket.ts";
 import {
   type AllPacket,
@@ -35,11 +35,14 @@ import {
   Writer,
 } from "./serialize.ts";
 
+import { PublishDeserializeOptions } from "./deserialize.ts";
+
+import { DeserializeStream } from "./DeserializeStream.ts";
 import {
-  deserializePacket,
-  PublishDeserializeOptions,
-  readFixedHeader,
-} from "./deserialize.ts";
+  ClientSource,
+  type CustomPackets,
+  CustomPacketType,
+} from "./ClientSource.ts";
 
 export type ClientProperties = {
   reconnectTime?: Milliseconds; // 0: no auto reconnect
@@ -51,26 +54,6 @@ export const DefaultClientProperties: Required<ClientProperties> = {
   reconnectTime: 1_000 as Milliseconds,
   connectTimeout: 10_000 as Milliseconds,
   publishDeserializeOptions: PublishDeserializeOptions.PayloadFormatIndicator,
-};
-
-export enum CustomPacketType {
-  ConnectionClosed = 100,
-  FailedConnectionAttempt = 101,
-  PingFailed = 102,
-  CloseLocally = 103,
-  Error = 200,
-}
-
-export type CustomPackets = {
-  type:
-    | CustomPacketType.Error
-    | CustomPacketType.FailedConnectionAttempt;
-  msg?: string | Error;
-} | {
-  type:
-    | CustomPacketType.ConnectionClosed
-    | CustomPacketType.PingFailed
-    | CustomPacketType.CloseLocally;
 };
 
 export function logPacket(packet: AllPacket | CustomPackets) {
@@ -117,66 +100,6 @@ export function printPacket(
     return;
   }
   logPacket(msg.value);
-}
-
-/**
- * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901285
- */
-export class DeserializeStream {
-  constructor(
-    readonly options?: {
-      publishDeserializeOptions?: PublishDeserializeOptions;
-    },
-  ) {
-  }
-
-  transform(
-    chunk: Uint8Array,
-    controller: TransformStreamDefaultController<AllPacket>,
-  ) {
-    if (this.#partialChunk) {
-      const newChunk = new Uint8Array(
-        this.#partialChunk.length + chunk.length,
-      );
-      newChunk.set(this.#partialChunk);
-      newChunk.set(chunk, this.#partialChunk.length);
-      this.#partialChunk = undefined;
-      chunk = newChunk;
-    }
-    let firstMessage = true;
-    const reader = new DataReader(chunk);
-    while (reader.hasMoreData) {
-      const pos = reader.pos;
-      const fixedHeader = readFixedHeader(reader);
-      if (
-        fixedHeader === undefined || reader.remainingSize < fixedHeader.length
-      ) {
-        // incomplete mqtt packet, decode and handle the data the next time we receive more data
-        if (firstMessage) {
-          this.#partialChunk = chunk;
-        } else {
-          // store the left over data
-          reader.pos = pos;
-          this.#partialChunk = reader.getUint8Array(reader.remainingSize);
-        }
-        return;
-      }
-      try {
-        controller.enqueue(
-          deserializePacket(
-            fixedHeader,
-            reader,
-            this.options?.publishDeserializeOptions,
-          ),
-        );
-      } catch (e) {
-        controller.error(`Error while deserializing ${e}`);
-      }
-      firstMessage = false;
-    }
-  }
-
-  #partialChunk: Uint8Array | undefined;
 }
 
 export type LowLevelConnection = {
@@ -267,42 +190,6 @@ export async function connectLowLevel(
   }
 
   throw new Error(`Unsupported protocol ${address.protocol}`);
-}
-
-export class ClientSource
-  implements UnderlyingSource<AllPacket | CustomPackets> {
-  #controller?: ReadableStreamDefaultController;
-  #closed = false;
-  constructor() {
-  }
-
-  start(controller: ReadableStreamDefaultController) {
-    this.#controller = controller;
-    this.#closed = false;
-  }
-
-  enqueue(p: AllPacket | CustomPackets) {
-    if (!this.#closed) {
-      this.#controller!.enqueue(p);
-    }
-  }
-
-  close() {
-    if (!this.#closed) {
-      this.#controller!.close();
-      this.#closed = true;
-    }
-  }
-
-  error(err: Error) {
-    if (!this.#closed) {
-      this.#controller!.error(err);
-    }
-  }
-
-  cancel() {
-    this.#closed = true;
-  }
 }
 
 /**
