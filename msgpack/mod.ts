@@ -174,7 +174,7 @@ export class Serializer {
   }
 
   addString(str: string) {
-    const utf8 = this.#textEncoder.encode(str);
+    const utf8 = Serializer.#textEncoder.encode(str);
     this.#writer.ensureBufferSize(
       utf8.byteLength + Length.max_header_length,
     );
@@ -409,7 +409,7 @@ export class Serializer {
   }
 
   #writer: DataWriter;
-  #textEncoder = new TextEncoder();
+  static #textEncoder = new TextEncoder();
 }
 
 export function serialize(
