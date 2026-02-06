@@ -64,6 +64,11 @@ export function toHexString(arr: ArrayLike<number> | Iterable<number>): string {
   }).join("");
 }
 
+/**
+ * A binary data reader that provides methods to read various data types from a buffer.
+ * Supports reading integers (8/16/32/64 bit), floats, strings, and sub-readers.
+ * All multi-byte reads use big-endian byte order.
+ */
 export class DataReader {
   /**
    * Creates a new DataReader instance.
@@ -107,51 +112,71 @@ export class DataReader {
     }
   }
 
+  /** Returns the number of bytes remaining to be read. */
   get remainingSize(): number {
     return this.byteLength - this.#pos;
   }
 
+  /** Returns true if there is more data to read. */
   get hasMoreData(): boolean {
     return this.#pos < this.byteLength;
   }
 
+  /**
+   * Creates a new DataReader for a slice of the current buffer.
+   * @param byteLength - Number of bytes to include in the sub-reader
+   * @returns A new DataReader for the specified slice
+   * @throws If byteLength exceeds remaining buffer size
+   */
   getDataReader(byteLength: number): DataReader {
     const pos = this.#getReadPosition(byteLength);
     return new DataReader(this, pos - this.#byteOffset, byteLength);
   }
 
+  /** Reads an unsigned 8-bit integer and advances the position. */
   getUint8(): number {
     return this.#view.getUint8(this.#getReadPosition(1));
   }
 
+  /** Reads a signed 8-bit integer and advances the position. */
   getInt8(): number {
     return this.#view.getInt8(this.#getReadPosition(1));
   }
 
+  /** Reads an unsigned 16-bit integer (big-endian) and advances the position. */
   getUint16(): number {
     return this.#view.getUint16(this.#getReadPosition(2));
   }
 
+  /** Reads a signed 16-bit integer (big-endian) and advances the position. */
   getInt16(): number {
     return this.#view.getInt16(this.#getReadPosition(2));
   }
 
+  /** Reads an unsigned 32-bit integer (big-endian) and advances the position. */
   getUint32(): number {
     return this.#view.getUint32(this.#getReadPosition(4));
   }
 
+  /** Reads a signed 32-bit integer (big-endian) and advances the position. */
   getInt32(): number {
     return this.#view.getInt32(this.#getReadPosition(4));
   }
 
+  /** Reads a 32-bit IEEE 754 floating point (big-endian) and advances the position. */
   getFloat32(): number {
     return this.#view.getFloat32(this.#getReadPosition(4));
   }
 
+  /** Reads a 64-bit IEEE 754 floating point (big-endian) and advances the position. */
   getFloat64(): number {
     return this.#view.getFloat64(this.#getReadPosition(8));
   }
 
+  /**
+   * Reads an unsigned 64-bit integer as a JavaScript number.
+   * @warning Values > Number.MAX_SAFE_INTEGER will lose precision. Use getBigUint64() for full precision.
+   */
   getUint64(): number {
     const pos = this.#getReadPosition(8);
     const high = this.#view.getUint32(pos);
@@ -159,6 +184,10 @@ export class DataReader {
     return high * 0x1_0000_0000 + low;
   }
 
+  /**
+   * Reads a signed 64-bit integer as a JavaScript number.
+   * @warning Values outside safe integer range will lose precision. Use getBigInt64() for full precision.
+   */
   getInt64(): number {
     const pos = this.#getReadPosition(8);
     const high = this.#view.getInt32(pos);
@@ -166,14 +195,20 @@ export class DataReader {
     return high * 0x1_0000_0000 + low;
   }
 
+  /** Reads an unsigned 64-bit integer as a BigInt (full precision). */
   getBigUint64(): bigint {
     return this.#view.getBigUint64(this.#getReadPosition(8));
   }
 
+  /** Reads a signed 64-bit integer as a BigInt (full precision). */
   getBigInt64(): bigint {
     return this.#view.getBigInt64(this.#getReadPosition(8));
   }
 
+  /**
+   * Reads an unsigned 64-bit integer, returning a number if safe, otherwise a BigInt.
+   * @returns A number if the value is <= Number.MAX_SAFE_INTEGER, otherwise a BigInt
+   */
   getBigUintOrUint64(): number | bigint {
     const pos = this.#getReadPosition(8);
     const high = this.#view.getUint32(pos);
@@ -188,6 +223,10 @@ export class DataReader {
     return this.getBigUint64();
   }
 
+  /**
+   * Reads a signed 64-bit integer, returning a number if safe, otherwise a BigInt.
+   * @returns A number if the value is within safe integer range, otherwise a BigInt
+   */
   getBigIntOrInt64(): number | bigint {
     const pos = this.#getReadPosition(8);
     const high = this.#view.getInt32(pos);
@@ -210,6 +249,11 @@ export class DataReader {
     return this.getBigInt64();
   }
 
+  /**
+   * Reads a slice of bytes as a Uint8Array (shares underlying buffer).
+   * @param byteLength - Number of bytes to read
+   * @returns A Uint8Array view of the buffer slice
+   */
   getUint8Array(byteLength: number): Uint8Array {
     const pos = this.#getReadPosition(byteLength);
     return this.#buffer.subarray(
@@ -218,6 +262,12 @@ export class DataReader {
     );
   }
 
+  /**
+   * Reads a UTF-8 encoded string.
+   * @param byteLength - Number of bytes to read (not character count)
+   * @returns The decoded string
+   * @throws If the bytes are not valid UTF-8
+   */
   getUTF8String(byteLength: number): string {
     const arr = this.getUint8Array(byteLength);
     try {
@@ -240,10 +290,15 @@ export class DataReader {
     );
   }
 
+  /** Current read position within the buffer. */
   get pos(): number {
     return this.#pos;
   }
 
+  /**
+   * Sets the read position.
+   * @throws If value is negative or exceeds byteLength
+   */
   set pos(value: number) {
     if (value < 0 || value > this.byteLength) {
       throw new Error(
@@ -290,7 +345,17 @@ export class DataReader {
   static textDecoder: TextDecoder = new TextDecoder();
 }
 
+/**
+ * A binary data writer that provides methods to write various data types to a buffer.
+ * Supports writing integers (8/16/32/64 bit), floats, and byte arrays.
+ * All multi-byte writes use big-endian byte order.
+ */
 export class DataWriter {
+  /**
+   * Creates a new DataWriter.
+   * @param options.bufferSize - Initial buffer size in bytes
+   * @param options.automaticallyExtendBuffer - If true, buffer grows automatically when needed
+   */
   constructor(
     options: { bufferSize: number; automaticallyExtendBuffer: boolean },
   ) {
@@ -300,18 +365,34 @@ export class DataWriter {
     this.automaticallyExtendBuffer = options.automaticallyExtendBuffer;
   }
 
+  /** Resets the write position to the beginning of the buffer. */
   reset() {
     this.pos = 0;
   }
 
+  /**
+   * Returns a view of the written data (shares underlying buffer).
+   * @param begin - Start offset (default: 0)
+   * @param end - End offset (default: current position)
+   */
   getBufferView(begin?: number, end?: number): Uint8Array {
     return this.bytes.subarray(begin ?? 0, end ?? this.pos);
   }
 
+  /**
+   * Returns a copy of the written data.
+   * @param begin - Start offset (default: 0)
+   * @param end - End offset (default: current position)
+   */
   getCopy(begin?: number, end?: number): Uint8Array {
     return this.bytes.slice(begin ?? 0, end ?? this.pos);
   }
 
+  /**
+   * Ensures the buffer has enough space for the specified number of additional bytes.
+   * If automaticallyExtendBuffer is false, this is a no-op (writes may fail).
+   * @param appendLength - Number of bytes to be written
+   */
   ensureBufferSize(appendLength: number): void {
     if (!this.automaticallyExtendBuffer) {
       return;
@@ -333,68 +414,71 @@ export class DataWriter {
     this.bytes.set(oldBytes);
   }
 
+  /** Writes an unsigned 8-bit integer. */
   addUint8(value: number) {
     this.ensureBufferSize(1);
-
     this.view.setUint8(this.pos, value);
     this.pos += 1;
   }
 
+  /** Writes a signed 8-bit integer. */
   addInt8(value: number) {
     this.ensureBufferSize(1);
-
     this.view.setInt8(this.pos, value);
     this.pos++;
   }
 
+  /** Writes an unsigned 16-bit integer (big-endian). */
   addUint16(value: number) {
     this.ensureBufferSize(2);
-
     this.view.setUint16(this.pos, value);
     this.pos += 2;
   }
 
+  /** Writes a signed 16-bit integer (big-endian). */
   addInt16(value: number) {
     this.ensureBufferSize(2);
-
     this.view.setInt16(this.pos, value);
     this.pos += 2;
   }
 
+  /** Writes an unsigned 32-bit integer (big-endian). */
   addUint32(value: number) {
     this.ensureBufferSize(4);
-
     this.view.setUint32(this.pos, value);
     this.pos += 4;
   }
 
+  /** Writes a signed 32-bit integer (big-endian). */
   addInt32(value: number) {
     this.ensureBufferSize(4);
-
     this.view.setInt32(this.pos, value);
     this.pos += 4;
   }
 
+  /** Writes a 32-bit IEEE 754 floating point (big-endian). */
   addFloat32(value: number) {
     this.ensureBufferSize(4);
-
     this.view.setFloat32(this.pos, value);
     this.pos += 4;
   }
 
+  /** Writes a 64-bit IEEE 754 floating point (big-endian). */
   addFloat64(value: number) {
     this.ensureBufferSize(8);
-
     this.view.setFloat64(this.pos, value);
     this.pos += 8;
   }
 
+  /**
+   * Writes an unsigned 64-bit integer from a JavaScript number.
+   * @warning Logs a warning if value exceeds Number.MAX_SAFE_INTEGER. Use addBigUint64 for full precision.
+   */
   addUint64(value: number) {
     if (!Number.isSafeInteger(value)) {
       console.warn(value, "exceeds MAX_SAFE_INTEGER. Precision may be lost");
     }
     this.ensureBufferSize(8);
-
     const high = Math.floor(value / 0x1_0000_0000);
     const low = value | 0;
     this.view.setUint32(this.pos, high);
@@ -402,12 +486,15 @@ export class DataWriter {
     this.pos += 8;
   }
 
+  /**
+   * Writes a signed 64-bit integer from a JavaScript number.
+   * @warning Logs a warning if value is outside safe integer range. Use addBigInt64 for full precision.
+   */
   addInt64(value: number) {
     if (!Number.isSafeInteger(value)) {
       console.warn(value, "exceeds MAX_SAFE_INTEGER. Precision may be lost");
     }
     this.ensureBufferSize(8);
-
     const high = Math.floor(value / 0x1_0000_0000);
     const low = value | 0;
     this.view.setInt32(this.pos, high);
@@ -415,28 +502,32 @@ export class DataWriter {
     this.pos += 8;
   }
 
+  /** Writes an unsigned 64-bit integer from a BigInt. */
   addBigUint64(value: bigint) {
     this.ensureBufferSize(8);
-
     this.view.setBigUint64(this.pos, value);
     this.pos += 8;
   }
 
+  /** Writes a signed 64-bit integer from a BigInt. */
   addBigInt64(value: bigint) {
     this.ensureBufferSize(8);
-
     this.view.setBigInt64(this.pos, value);
     this.pos += 8;
   }
 
+  /**
+   * Writes an array of bytes to the buffer.
+   * @param values - Array-like object containing byte values (0-255)
+   */
   addArray(values: ArrayLike<number>) {
     const size = values.length;
     this.ensureBufferSize(size);
-
     this.bytes.set(values, this.pos);
     this.pos += size;
   }
 
+  /** Current write position in the buffer. */
   pos = 0;
   protected view: DataView;
   protected bytes: Uint8Array;
