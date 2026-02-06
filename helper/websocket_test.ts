@@ -4,7 +4,7 @@
 import { assertRejects } from "@std/assert";
 import { streamifyWebSocket } from "./websocket.ts";
 
-Deno.test("DataWriter: buffer does not grow if not allowed", async () => {
+Deno.test("WebSocket: connection failure rejects writable", async () => {
   const { writable } = streamifyWebSocket("ws://localhost:54321");
 
   const writer = writable.getWriter();
