@@ -15,6 +15,11 @@ import {
  * @see https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901285
  */
 export class DeserializeStream implements Transformer<Uint8Array, AllPacket> {
+  /**
+   * Creates a new DeserializeStream.
+   * @param options - Optional configuration
+   * @param options.publishDeserializeOptions - How to deserialize PUBLISH payloads
+   */
   constructor(
     readonly options?: {
       publishDeserializeOptions?: PublishDeserializeOptions;
@@ -22,6 +27,12 @@ export class DeserializeStream implements Transformer<Uint8Array, AllPacket> {
   ) {
   }
 
+  /**
+   * Transforms incoming byte chunks into MQTT packets.
+   * Handles partial packets across chunk boundaries.
+   * @param chunk - Incoming byte data
+   * @param controller - Transform stream controller
+   */
   transform(
     chunk: Uint8Array,
     controller: TransformStreamDefaultController<AllPacket>,

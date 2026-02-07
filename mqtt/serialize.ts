@@ -1,5 +1,9 @@
 /**
- * Copyright 2023-2026 Bernd Amend. MIT license.
+ * MQTT 5.0 packet serialization utilities.
+ *
+ * @module
+ * @license MIT
+ * @copyright 2023-2026 Bernd Amend
  */
 import { DataReader, DataWriter } from "../helper/mod.ts";
 import {
@@ -33,7 +37,17 @@ import {
   type UserProperty,
 } from "./packets.ts";
 
+/**
+ * MQTT packet writer extending DataWriter with MQTT-specific encoding methods.
+ * Handles variable byte integers, UTF-8 strings, properties, and message framing.
+ */
 export class Writer extends DataWriter {
+  /**
+   * Creates a new Writer instance.
+   * @param options - Configuration options
+   * @param options.bufferSize - Initial buffer size in bytes (default: 2048)
+   * @param options.automaticallyExtendBuffer - Whether to grow buffer automatically (default: true)
+   */
   constructor(
     options: { bufferSize: number; automaticallyExtendBuffer: boolean } = {
       bufferSize: 2048,
@@ -44,6 +58,11 @@ export class Writer extends DataWriter {
     this.pos = maxFixedHeaderSize;
   }
 
+  /**
+   * Calculates the byte length of a variable byte integer.
+   * @param n - The integer to measure
+   * @returns Length in bytes (1-4)
+   */
   lengthVariableByteInteger(n: number): number {
     if (n === 0) {
       return 1;
@@ -51,6 +70,10 @@ export class Writer extends DataWriter {
     return Math.ceil((32 - Math.clz32(n)) / 7);
   }
 
+  /**
+   * Writes a variable byte integer per MQTT spec section 1.5.5.
+   * @param num - Integer value (0 to 268,435,455)
+   */
   addVariableByteInteger(num: number) {
     do {
       let encodedByte = num % 128;
@@ -65,6 +88,11 @@ export class Writer extends DataWriter {
     } while (num > 0);
   }
 
+  /**
+   * Writes binary data with a 16-bit length prefix.
+   * @param bin - Binary data to write
+   * @throws If data exceeds 65535 bytes
+   */
   addBinaryData(bin: DataReader | Uint8Array) {
     if (bin.byteLength > 65535) {
       throw new Error(`data limit is 65535 got ${bin.byteLength}`);
@@ -77,6 +105,10 @@ export class Writer extends DataWriter {
     }
   }
 
+  /**
+   * Writes a UTF-8 string with a 16-bit length prefix.
+   * @param str - String to write
+   */
   addUTF8String(str: string) {
     if (this.automaticallyExtendBuffer) {
       this.ensureBufferSize(str.length * 3); // the buffer may be to big
@@ -95,6 +127,11 @@ export class Writer extends DataWriter {
     this.pos += written;
   }
 
+  /**
+   * Writes a raw UTF-8 string without length prefix.
+   * @param str - String to write
+   * @returns Number of bytes written
+   */
   addString(str: string): number {
     if (this.automaticallyExtendBuffer) {
       this.ensureBufferSize(str.length * 3); // the buffer may be to big
@@ -110,6 +147,10 @@ export class Writer extends DataWriter {
     return written;
   }
 
+  /**
+   * Writes a reason string property if defined.
+   * @param s - Optional reason string
+   */
   addReasonString(s?: string) {
     if (s === undefined) {
       return;
@@ -118,6 +159,10 @@ export class Writer extends DataWriter {
     this.addUTF8String(s);
   }
 
+  /**
+   * Writes user properties if defined.
+   * @param prop - Optional array of user properties
+   */
   addUserProperties(prop?: UserProperty[]) {
     if (prop === undefined) {
       return;
@@ -129,6 +174,11 @@ export class Writer extends DataWriter {
     }
   }
 
+  /**
+   * Writes properties using a callback function.
+   * @param prop - Properties to serialize
+   * @param f - Callback function to serialize properties
+   */
   addProperties<T>(
     prop: T | undefined,
     f: (tw: Writer, p: T | undefined) => void,
@@ -144,10 +194,18 @@ export class Writer extends DataWriter {
     this.addArray(serializedProperties);
   }
 
+  /** Resets the writer position to begin a new message. */
   beginMessage() {
     this.pos = maxFixedHeaderSize;
   }
 
+  /**
+   * Finalizes the message by writing the fixed header and returning the complete packet.
+   * @param type - Control packet type
+   * @param flags - Packet flags (4 bits max)
+   * @returns Complete MQTT packet as Uint8Array
+   * @throws If flags exceed 4 bits or message exceeds maximum packet size
+   */
   finalizeMessage(
     type: ControlPacketType,
     flags: number,
@@ -172,10 +230,16 @@ export class Writer extends DataWriter {
     return this.getCopy(start, endPos);
   }
 
+  /** Gets the maximum allowed packet size. */
   get maximumPacketSize(): number {
     return this.#maximumPacketSize;
   }
 
+  /**
+   * Sets the maximum allowed packet size.
+   * @param value - Maximum size in bytes (0 to 268,435,455), defaults to max
+   * @throws If value is out of range
+   */
   set maximumPacketSize(value: number | undefined) {
     value ??= 268_435_455; // default value
     if (value < 0 || value > 268_435_455) {
@@ -191,19 +255,29 @@ export class Writer extends DataWriter {
   #maximumPacketSize = 268_435_455; //
 }
 
+/**
+ * Helper type to omit the packet type field, making it optional.
+ * @template T - The packet type
+ */
 export type OmitPacketType<T extends { type: ControlPacketType }> =
   & Omit<T, "type">
   & {
     type?: T["type"];
   };
 
+/**
+ * Makes a packet type readonly with an optional type field.
+ * Used for serialize function parameters.
+ * @template T - The packet type
+ */
 export type MakeSerializePacketType<T extends { type: ControlPacketType }> =
   Readonly<
     OmitPacketType<T>
   >;
 
 /**
- * 3.1 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901033
+ * 3.1 Serializes a CONNECT packet.
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901033}
  */
 export function serializeConnectPacket(
   packet: MakeSerializePacketType<ConnectPacket>,
@@ -336,7 +410,8 @@ export function serializeConnectPacket(
 }
 
 /**
- * 3.2 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901074
+ * 3.2 Serializes a CONNACK packet.
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901074}
  */
 export function serializeConnAckPacket(
   packet: MakeSerializePacketType<ConnAckPacket>,
@@ -446,7 +521,8 @@ export function serializeConnAckPacket(
 }
 
 /**
- * 3.3 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901100
+ * 3.3 Serializes a PUBLISH packet.
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901100}
  */
 export function serializePublishPacket(
   packet: MakeSerializePacketType<PublishPacket>,
@@ -526,7 +602,8 @@ export function serializePublishPacket(
 }
 
 /**
- * 3.4 PUBACK
+ * 3.4 Serializes a PUBACK packet.
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901121}
  */
 export function serializePubAckPacket(
   packet: MakeSerializePacketType<PubAckPacket>,
@@ -548,7 +625,8 @@ export function serializePubAckPacket(
 }
 
 /**
- * 3.5 PUBREC
+ * 3.5 Serializes a PUBREC packet.
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc384800421}
  */
 export function serializePubRecPacket(
   packet: MakeSerializePacketType<PubRecPacket>,
@@ -570,7 +648,8 @@ export function serializePubRecPacket(
 }
 
 /**
- * 3.6 PUBREL
+ * 3.6 Serializes a PUBREL packet.
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc384800426}
  */
 export function serializePubRelPacket(
   packet: MakeSerializePacketType<PubRelPacket>,
@@ -592,7 +671,8 @@ export function serializePubRelPacket(
 }
 
 /**
- * 3.7 PUBCOMP
+ * 3.7 Serializes a PUBCOMP packet.
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc511988628}
  */
 export function serializePubCompPacket(
   packet: MakeSerializePacketType<PubCompPacket>,
@@ -614,7 +694,8 @@ export function serializePubCompPacket(
 }
 
 /**
- * 3.8 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901161
+ * 3.8 Serializes a SUBSCRIBE packet.
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901161}
  */
 export function serializeSubscribePacket(
   packet: MakeSerializePacketType<SubscribePacket>,
@@ -651,7 +732,8 @@ export function serializeSubscribePacket(
 }
 
 /**
- * 3.9 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901171
+ * 3.9 Serializes a SUBACK packet.
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901171}
  */
 export function serializeSubAckPacket(
   packet: MakeSerializePacketType<SubAckPacket>,
@@ -676,7 +758,8 @@ export function serializeSubAckPacket(
 }
 
 /**
- * 3.10 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901179
+ * 3.10 Serializes an UNSUBSCRIBE packet.
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901179}
  */
 export function serializeUnsubscribePacket(
   packet: MakeSerializePacketType<UnsubscribePacket>,
@@ -701,7 +784,8 @@ export function serializeUnsubscribePacket(
 }
 
 /**
- * 3.11 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901187
+ * 3.11 Serializes an UNSUBACK packet.
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901187}
  */
 export function serializeUnsubAckPacket(
   packet: MakeSerializePacketType<UnsubAckPacket>,
@@ -725,6 +809,10 @@ export function serializeUnsubAckPacket(
   return w.finalizeMessage(ControlPacketType.UnsubAck, 0);
 }
 
+/**
+ * 3.12 Pre-serialized PINGREQ packet for efficient reuse.
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901195}
+ */
 export const PingReqMessage: Uint8Array = (() => {
   const writer = new Writer(
     {
@@ -735,6 +823,10 @@ export const PingReqMessage: Uint8Array = (() => {
   return writer.finalizeMessage(ControlPacketType.PingReq, 0);
 })();
 
+/**
+ * 3.13 Pre-serialized PINGRESP packet for efficient reuse.
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc384800459}
+ */
 export const PingRespMessage: Uint8Array = (() => {
   const writer = new Writer(
     {
@@ -746,7 +838,8 @@ export const PingRespMessage: Uint8Array = (() => {
 })();
 
 /**
- * 3.14 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901205
+ * 3.14 Serializes a DISCONNECT packet.
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901205}
  */
 export function serializeDisconnectPacket(
   packet: MakeSerializePacketType<DisconnectPacket>,
@@ -781,7 +874,8 @@ export function serializeDisconnectPacket(
 }
 
 /**
- * 3.15 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901217
+ * 3.15 Serializes an AUTH packet.
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901217}
  */
 export function serializeAuthPacket(
   packet: MakeSerializePacketType<AuthPacket>,
@@ -818,6 +912,12 @@ export function serializeAuthPacket(
   return w.finalizeMessage(ControlPacketType.Auth, 0);
 }
 
+/**
+ * Serializes any MQTT packet to binary format.
+ * @param packet - The packet to serialize
+ * @param w - The Writer instance to use
+ * @returns The serialized packet as Uint8Array
+ */
 export function serialize(packet: AllPacket, w: Writer): Uint8Array {
   switch (packet.type) {
     case ControlPacketType.Connect:

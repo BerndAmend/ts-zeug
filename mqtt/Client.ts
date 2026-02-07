@@ -1,5 +1,9 @@
 /**
- * Copyright 2023-2026 Bernd Amend. MIT license.
+ * MQTT 5.0 client implementation.
+ *
+ * @module
+ * @license MIT
+ * @copyright 2023-2026 Bernd Amend
  */
 import { deadline, delay } from "../helper/mod.ts";
 import { streamifyWebSocket } from "../helper/websocket.ts";
@@ -44,18 +48,29 @@ import {
   CustomPacketType,
 } from "./ClientSource.ts";
 
+/**
+ * Configuration properties for the MQTT Client.
+ */
 export type ClientProperties = {
-  reconnectTime?: Milliseconds; // 0: no auto reconnect
-  connectTimeout?: Milliseconds; // timeout if no CONNACK is received
+  /** Time in milliseconds to wait before reconnecting. 0 disables auto-reconnect. */
+  reconnectTime?: Milliseconds;
+  /** Timeout in milliseconds for the CONNECT/CONNACK handshake. */
+  connectTimeout?: Milliseconds;
+  /** How to deserialize PUBLISH packet payloads. */
   publishDeserializeOptions?: PublishDeserializeOptions;
 };
 
+/** Default values for ClientProperties. */
 export const DefaultClientProperties: Required<ClientProperties> = {
   reconnectTime: 1_000 as Milliseconds,
   connectTimeout: 10_000 as Milliseconds,
   publishDeserializeOptions: PublishDeserializeOptions.PayloadFormatIndicator,
 };
 
+/**
+ * Logs an MQTT packet to the console with color-coded output.
+ * @param packet - The packet to log
+ */
 export function logPacket(packet: AllPacket | CustomPackets) {
   switch (packet.type) {
     case ControlPacketType.Disconnect: {
@@ -90,6 +105,10 @@ export function logPacket(packet: AllPacket | CustomPackets) {
   }
 }
 
+/**
+ * Prints a read result from a readable stream.
+ * @param msg - The read result
+ */
 export function printPacket(
   msg: { done: false; value: AllPacket } | {
     done: true;
@@ -102,8 +121,13 @@ export function printPacket(
   logPacket(msg.value);
 }
 
+/**
+ * Low-level MQTT connection with readable and writable streams.
+ */
 export type LowLevelConnection = {
+  /** Stream of deserialized MQTT packets. */
   readable: ReadableStream<AllPacket>;
+  /** Stream for sending raw bytes. */
   writable: WritableStream<string | ArrayBufferView | ArrayBufferLike | Blob>;
 };
 
@@ -285,6 +309,7 @@ export class Client implements AsyncDisposable {
     return this.#connectPacket;
   }
 
+  /** Disposes the client by closing the connection. */
   async [Symbol.asyncDispose]() {
     await this.close();
   }

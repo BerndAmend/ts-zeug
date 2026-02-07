@@ -1,6 +1,10 @@
 /**
- * Copyright 2023-2026 Bernd Amend. MIT license.
- * Implementation of msgpack as described in https://github.com/msgpack/msgpack/blob/master/spec.md
+ * MessagePack serialization and deserialization implementation.
+ * @see {@link https://github.com/msgpack/msgpack/blob/master/spec.md}
+ *
+ * @module
+ * @license MIT
+ * @copyright 2023-2026 Bernd Amend
  */
 import { DataReader, DataWriter, intoUint8Array } from "../helper/mod.ts";
 
@@ -77,7 +81,26 @@ const enum NumericLimits {
   uint_32_max = 0x100000000 - 1,
 }
 
+/**
+ * A MessagePack serializer for encoding JavaScript values into binary format.
+ * Supports all MessagePack types including integers, floats, strings, binary data,
+ * arrays, maps, and timestamps.
+ *
+ * @example
+ * ```ts
+ * const serializer = new Serializer();
+ * serializer.addString("hello");
+ * serializer.addInt(42);
+ * const data = serializer.getBufferView();
+ * ```
+ */
 export class Serializer {
+  /**
+   * Creates a new Serializer instance.
+   * @param options - Configuration options
+   * @param options.bufferSize - Initial buffer size in bytes (default: 2048)
+   * @param options.automaticallyExtendBuffer - Whether to grow buffer automatically (default: true)
+   */
   constructor(
     options: { bufferSize: number; automaticallyExtendBuffer: boolean } = {
       bufferSize: 2048,
@@ -87,22 +110,39 @@ export class Serializer {
     this.#writer = new DataWriter(options);
   }
 
+  /**
+   * Returns a view of the serialized data buffer.
+   * @returns A Uint8Array view of the written data
+   */
   getBufferView(): Uint8Array {
     return this.#writer.getBufferView();
   }
 
+  /**
+   * Resets the serializer to write from the beginning of the buffer.
+   */
   reset() {
     this.#writer.reset();
   }
 
+  /** Adds a nil (null/undefined) value to the buffer. */
   addNil() {
     this.#addFormat(Formats.nil);
   }
 
+  /**
+   * Adds a boolean value to the buffer.
+   * @param value - The boolean to serialize
+   */
   addBoolean(value: boolean) {
     this.#addFormat(value ? Formats.boolean_true : Formats.boolean_false);
   }
 
+  /**
+   * Adds an integer to the buffer using the smallest format that fits.
+   * Supports values from Number.MIN_SAFE_INTEGER to Number.MAX_SAFE_INTEGER.
+   * @param num - The integer to serialize
+   */
   addInt(num: number) {
     if (num >= 0) {
       if (num <= NumericLimits.positive_fixint_max) {
@@ -142,6 +182,11 @@ export class Serializer {
     }
   }
 
+  /**
+   * Adds a BigInt to the buffer.
+   * Values within safe integer range are serialized efficiently as regular integers.
+   * @param num - The BigInt to serialize
+   */
   addBigInt(num: bigint) {
     if (
       num >= BigInt(Number.MIN_SAFE_INTEGER) &&
@@ -157,6 +202,11 @@ export class Serializer {
     }
   }
 
+  /**
+   * Adds a 32-bit float to the buffer.
+   * Safe integers are serialized as integers for efficiency.
+   * @param num - The number to serialize
+   */
   addFloat32(num: number): void {
     if (Number.isSafeInteger(num)) {
       return this.addInt(num);
@@ -165,6 +215,11 @@ export class Serializer {
     this.#writer.addFloat32(num);
   }
 
+  /**
+   * Adds a 64-bit float to the buffer.
+   * Safe integers are serialized as integers for efficiency.
+   * @param num - The number to serialize
+   */
   addFloat64(num: number): void {
     if (Number.isSafeInteger(num)) {
       return this.addInt(num);
@@ -173,6 +228,11 @@ export class Serializer {
     this.#writer.addFloat64(num);
   }
 
+  /**
+   * Adds a UTF-8 string to the buffer.
+   * @param str - The string to serialize
+   * @throws If string length exceeds MessagePack limit (2^32 - 1 bytes)
+   */
   addString(str: string) {
     const utf8 = Serializer.#textEncoder.encode(str);
     this.#writer.ensureBufferSize(
@@ -197,6 +257,11 @@ export class Serializer {
     this.#writer.addArray(utf8);
   }
 
+  /**
+   * Adds binary data to the buffer.
+   * @param array - The binary data to serialize
+   * @throws If data length exceeds MessagePack limit (2^32 - 1 bytes)
+   */
   addBinary(array: ArrayBufferView) {
     const data = intoUint8Array(array);
     this.#writer.ensureBufferSize(
@@ -234,6 +299,11 @@ export class Serializer {
     }
   }
 
+  /**
+   * Adds an array header for a given number of elements.
+   * Elements must be added separately after calling this.
+   * @param lenInObjects - Number of elements that will follow
+   */
   addArrayHeader(lenInObjects: number) {
     if (lenInObjects < 16) {
       this.#addFormat(Formats.fixarray_start | lenInObjects);
@@ -246,6 +316,12 @@ export class Serializer {
     }
   }
 
+  /**
+   * Adds an extension type to the buffer.
+   * @param typeAsInt8 - Extension type identifier (-128 to 127)
+   * @param array - The extension data
+   * @throws If typeAsInt8 is out of range
+   */
   addExt(typeAsInt8: number, array: ArrayBufferView) {
     if (typeAsInt8 < -128 || typeAsInt8 > 127) {
       throw new Error("typeAsInt8 is out of range (-128<=x<=127)");
@@ -280,6 +356,10 @@ export class Serializer {
     this.#writer.addArray(data);
   }
 
+  /**
+   * Adds a Date as a MessagePack timestamp extension.
+   * @param date - The Date to serialize
+   */
   addDate(date: Date) {
     // The following code ensures nsec is unsigned.
     const { sec, nsec } = (() => {
@@ -321,6 +401,15 @@ export class Serializer {
     this.addExt(Extensions.TimeStamp, writer.getBufferView());
   }
 
+  /**
+   * Serializes any JavaScript value automatically.
+   * Handles primitives, arrays, Maps, Sets, Dates, and plain objects.
+   * @param arg - The value to serialize
+   * @param options - Serialization options
+   * @param options.transferTypedArraysAsBinary - Serialize typed arrays as binary (default: false)
+   * @param options.serializeNumbersAsFloats - Use float32 for numbers (default: false, uses float64)
+   * @throws For symbols and functions which cannot be serialized
+   */
   add(
     // deno-lint-ignore no-explicit-any
     arg: any,
@@ -412,6 +501,16 @@ export class Serializer {
   static #textEncoder = new TextEncoder();
 }
 
+/**
+ * Serializes a JavaScript value to MessagePack format.
+ * Convenience function that creates a Serializer internally.
+ * @param arg - The value to serialize
+ * @returns The serialized binary data
+ * @example
+ * ```ts
+ * const data = serialize({ hello: "world", count: 42 });
+ * ```
+ */
 export function serialize(
   arg: unknown,
 ): Uint8Array {
@@ -451,6 +550,16 @@ function deserializeTimestampExtension(reader: DataReader): Date {
   }
 }
 
+/**
+ * Deserializes MessagePack binary data to a JavaScript value.
+ * @param buffer - The binary data to deserialize
+ * @param extensionHandler - Optional handler for custom extension types
+ * @returns The deserialized JavaScript value
+ * @example
+ * ```ts
+ * const value = deserialize(data) as { hello: string; count: number };
+ * ```
+ */
 export function deserialize(
   buffer: DataReader | Uint8Array,
   extensionHandler?: (type: number, data: DataReader) => unknown,

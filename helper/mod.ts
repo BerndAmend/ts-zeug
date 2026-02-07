@@ -1,8 +1,16 @@
 /**
- * Copyright 2023-2026 Bernd Amend. MIT license.
+ * Helper utilities for binary data handling, readers, writers, and more.
+ *
+ * @module
+ * @license MIT
+ * @copyright 2023-2026 Bernd Amend
  */
 export { abortable, deadline, delay } from "@std/async";
 
+/**
+ * Represents a buffer-like type that can be used for binary data operations.
+ * Includes typed arrays, array buffers, and array-like objects.
+ */
 export type Buffer =
   | ArrayLike<number>
   | Uint8Array
@@ -10,8 +18,30 @@ export type Buffer =
   | ArrayBuffer
   | SharedArrayBuffer;
 
+/**
+ * Symbol used for nominal/branded types.
+ * @see {@link Branded}
+ */
 export const __brand: unique symbol = Symbol("__brand");
+
+/**
+ * A brand type that adds a unique type tag to a value.
+ * @template B - The brand identifier type
+ */
 export type Brand<B> = { [__brand]: B };
+
+/**
+ * Creates a branded/nominal type by intersecting a base type with a brand.
+ * Useful for creating distinct types that are structurally identical.
+ * @template T - The base type to brand
+ * @template B - The brand identifier type
+ * @example
+ * ```ts
+ * type SomeBrandedType = Branded<string, "SomeBrandedType">;
+ * type SomeOtherBrandedType = Branded<string, "SomeOtherBrandedType">;
+ * // SomeBrandedType and SomeOtherBrandedType are now incompatible despite both being strings
+ * ```
+ */
 export type Branded<T, B> = T & Brand<B>;
 
 /**
@@ -38,9 +68,22 @@ export function intoUint8Array(
 }
 
 /**
- * based on the implementation from https://github.com/ai/nanoid
+ * A branded string type representing a NanoID.
+ * @see {@link nanoid}
  */
 export type NanoID = Branded<string, "NanoID">;
+
+/**
+ * Generates a cryptographically secure random string ID.
+ * Based on the implementation from {@link https://github.com/ai/nanoid}.
+ * @param t - The length of the ID to generate (default: 21)
+ * @returns A random NanoID string
+ * @example
+ * ```ts
+ * const id = nanoid(); // e.g. "V1StGXR8_Z5jdHi6B-myT"
+ * const shortId = nanoid(10); // e.g. "IRFa-VaY2b"
+ * ```
+ */
 export function nanoid(t = 21): NanoID {
   return crypto.getRandomValues(new Uint8Array(t))
     .reduce(
@@ -58,6 +101,15 @@ export function nanoid(t = 21): NanoID {
     ) as NanoID;
 }
 
+/**
+ * Converts an array of bytes to a hexadecimal string.
+ * @param arr - The byte array to convert
+ * @returns A lowercase hexadecimal string representation
+ * @example
+ * ```ts
+ * toHexString([0xde, 0xad, 0xbe, 0xef]); // "deadbeef"
+ * ```
+ */
 export function toHexString(arr: ArrayLike<number> | Iterable<number>): string {
   return Array.from(arr, (byte) => {
     return `0${(byte & 0xFF).toString(16)}`.slice(-2);
@@ -279,9 +331,10 @@ export class DataReader {
   }
 
   /**
-   * @returns A Uint8Array representing the entire buffer from byteOffset to byteOffset + byteLength.
+   * Returns a Uint8Array view of the entire buffer slice.
    * This method is useful for getting the full data read by this DataReader.
    * Note that this does not modify the position of the DataReader.
+   * @returns A Uint8Array representing the entire buffer from byteOffset to byteOffset + byteLength
    */
   asUint8Array(): Uint8Array {
     return this.#buffer.subarray(
@@ -322,6 +375,7 @@ export class DataReader {
   }
 
   #pos = 0;
+  /** The total length of the readable buffer in bytes. */
   readonly byteLength: number;
   #byteOffset: number;
   /**
@@ -529,13 +583,26 @@ export class DataWriter {
 
   /** Current write position in the buffer. */
   pos = 0;
+  /** Internal DataView for typed access to the buffer. */
   protected view: DataView;
+  /** Internal byte array backing the buffer. */
   protected bytes: Uint8Array;
+  /** Whether the buffer should grow automatically when capacity is exceeded. */
   protected automaticallyExtendBuffer: boolean;
 }
 
 /**
- * https://jakearchibald.com/2017/async-iterators-and-generators/#making-streams-iterate
+ * Converts a ReadableStream to an async iterator for use in for-await-of loops.
+ * @template T - The stream element type
+ * @param stream - The ReadableStream to iterate
+ * @yields Each chunk from the stream
+ * @see {@link https://jakearchibald.com/2017/async-iterators-and-generators/#making-streams-iterate}
+ * @example
+ * ```ts
+ * for await (const chunk of streamAsyncIterator(response.body)) {
+ *   console.log(chunk);
+ * }
+ * ```
  */
 export async function* streamAsyncIterator<T>(
   stream: ReadableStream<T>,

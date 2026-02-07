@@ -1,5 +1,9 @@
 /**
- * Copyright 2023-2026 Bernd Amend. MIT license.
+ * MQTT 5.0 packet deserialization utilities.
+ *
+ * @module
+ * @license MIT
+ * @copyright 2023-2026 Bernd Amend
  */
 import type { DataReader } from "../helper/mod.ts";
 import {
@@ -72,6 +76,9 @@ function readVariableByteInteger(
   return value;
 }
 
+/**
+ * Options for how to deserialize PUBLISH packet payloads.
+ */
 export enum PublishDeserializeOptions {
   /**
    * Depending on the payload_format_indicator return the payload as a UTF8 string or as a DataReader.
@@ -93,7 +100,10 @@ export enum PublishDeserializeOptions {
 }
 
 /**
- * 2.1.1 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901021
+ * 2.1.1 Reads the MQTT fixed header from a reader.
+ * @param reader - The data reader
+ * @returns The parsed fixed header, or undefined if incomplete
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901021}
  */
 export function readFixedHeader(
   reader: DataReader,
@@ -126,6 +136,11 @@ function readBinaryData(
   return reader.getDataReader(len);
 }
 
+/**
+ * Reads the properties from a reader.
+ * @param reader - The data reader
+ * @returns The parsed properties, or undefined if no properties are present
+ */
 function readProperties(
   reader: DataReader,
   options?: PublishDeserializeOptions,
@@ -241,6 +256,10 @@ function readProperties(
   return ret;
 }
 
+/**
+ * 3.1 Deserializes a CONNECT packet.
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901033}
+ */
 function deserializeConnectPacket(
   _fixedHeader: FixedHeader,
   r: DataReader,
@@ -328,7 +347,8 @@ function deserializeConnectPacket(
 }
 
 /**
- * 3.2 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901074
+ * 3.2 Deserializes a CONNACK packet.
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901074}
  */
 function deserializeConnAckPacket(
   _fixedHeader: FixedHeader,
@@ -358,7 +378,8 @@ function deserializeConnAckPacket(
 }
 
 /**
- * 3.3 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901100
+ * 3.3 Deserializes a PUBLISH packet.
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901100}
  */
 function deserializePublishPacket(
   fixedHeader: FixedHeader,
@@ -422,7 +443,8 @@ function deserializePublishPacket(
 }
 
 /**
- * 3.4
+ * 3.4 Deserializes a PUBACK packet.
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901121}
  */
 function deserializePubAckPacket(
   _fixedHeader: FixedHeader,
@@ -443,7 +465,8 @@ function deserializePubAckPacket(
 }
 
 /**
- * 3.5
+ * 3.5 Deserializes a PUBREC packet.
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc384800421}
  */
 function deserializePubRecPacket(
   _fixedHeader: FixedHeader,
@@ -464,7 +487,8 @@ function deserializePubRecPacket(
 }
 
 /**
- * 3.6
+ * 3.6 Deserializes a PUBREL packet.
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc384800426}
  */
 function deserializePubRelPacket(
   fixedHeader: FixedHeader,
@@ -490,7 +514,8 @@ function deserializePubRelPacket(
 }
 
 /**
- * 3.7
+ * 3.7 Deserializes a PUBCOMP packet.
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc511988628}
  */
 function deserializePubCompPacket(
   _fixedHeader: FixedHeader,
@@ -511,7 +536,8 @@ function deserializePubCompPacket(
 }
 
 /**
- * 3.8 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901161
+ * 3.8 Deserializes a SUBSCRIBE packet.
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901161}
  */
 function deserializeSubscribePacket(
   fixedHeader: FixedHeader,
@@ -581,7 +607,8 @@ function deserializeSubscribePacket(
 }
 
 /**
- * 3.9 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901171
+ * 3.9 Deserializes a SUBACK packet.
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901171}
  */
 function deserializeSubAckPacket(
   _fixedHeader: FixedHeader,
@@ -606,7 +633,8 @@ function deserializeSubAckPacket(
 }
 
 /**
- * 3.10 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901179
+ * 3.10 Deserializes an UNSUBSCRIBE packet.
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901179}
  */
 function deserializeUnsubscribePacket(
   _fixedHeader: FixedHeader,
@@ -631,7 +659,8 @@ function deserializeUnsubscribePacket(
 }
 
 /**
- * 3.11 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901187
+ * 3.11 Deserializes an UNSUBACK packet.
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901187}
  */
 function deserializeUnsubAckPacket(
   _fixedHeader: FixedHeader,
@@ -656,7 +685,8 @@ function deserializeUnsubAckPacket(
 }
 
 /**
- * 3.14 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901205
+ * 3.14 Deserializes a DISCONNECT packet.
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901205}
  */
 export function deserializeDisconnectPacket(
   _fixedHeader: FixedHeader,
@@ -681,7 +711,8 @@ export function deserializeDisconnectPacket(
 }
 
 /**
- * 3.15 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901217
+ * 3.15 Deserializes an AUTH packet.
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901217}
  */
 export function deserializeAuthPacket(
   _fixedHeader: FixedHeader,
@@ -704,6 +735,14 @@ export function deserializeAuthPacket(
 
   return ret;
 }
+/**
+ * Deserializes any MQTT packet from binary data.
+ * @param fixedHeader - The packet's fixed header
+ * @param reader - The data reader positioned after the fixed header
+ * @param options - Optional payload deserialization options for PUBLISH packets
+ * @returns The deserialized packet
+ * @throws If the packet type is not implemented or invalid
+ */
 export function deserializePacket(
   fixedHeader: FixedHeader,
   reader: DataReader,

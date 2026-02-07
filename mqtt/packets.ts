@@ -1,5 +1,9 @@
 /**
- * Copyright 2023-2026 Bernd Amend. MIT license.
+ * MQTT 5.0 packet type definitions and utilities.
+ *
+ * @module
+ * @license MIT
+ * @copyright 2023-2026 Bernd Amend
  */
 import type { Branded, DataReader } from "../helper/mod.ts";
 
@@ -234,7 +238,8 @@ export enum DisconnectReasonCode {
 }
 
 /**
- * 3.15.2.1 https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901220
+ * 3.15.2.1
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901220}
  */
 export enum AuthReasonCode {
   Success = 0x00,
@@ -243,23 +248,42 @@ export enum AuthReasonCode {
 }
 
 /**
- * 3.1.3.1
+ * 3.1.3.1 A branded client identifier string.
+ * @see asClientID
  */
 export type ClientID = Branded<string, "ClientID">;
-export type Topic = Branded<string, "Topic">;
+
 /**
- * similar to topic to also allows the characters # and ?
+ * A branded MQTT topic string (no wildcards).
+ * @see asTopic
+ */
+export type Topic = Branded<string, "Topic">;
+
+/**
+ * A branded MQTT topic filter that allows wildcards (# and +).
+ * @see asTopicFilter
  */
 export type TopicFilter = Branded<string, "TopicFilter">;
+
+/** A branded number representing time in milliseconds. */
 export type Milliseconds = Branded<number, "Milliseconds">;
+
+/** A branded number representing time in seconds. */
 export type Seconds = Branded<number, "Seconds">;
 /**
  * 0 <= PacketIdentifier <= 65535
  */
 export type PacketIdentifier = Branded<number, "PacketIdentifier">;
 
+/** An MQTT user property key-value pair. */
 export type UserProperty = { key: string; value: string };
 
+/**
+ * Validates and casts a string to an MQTT Topic.
+ * @param input - The topic string to validate
+ * @returns The validated Topic
+ * @throws If the topic is empty, starts with '/', or contains wildcards
+ */
 export function asTopic(input: string): Topic {
   if (input === "") {
     throw new Error(`Invalid Topic: cannot be empty`);
@@ -283,6 +307,12 @@ export function asTopic(input: string): Topic {
   return input as Topic;
 }
 
+/**
+ * Validates and casts a string to an MQTT TopicFilter.
+ * @param input - The topic filter string to validate
+ * @returns The validated TopicFilter
+ * @throws If the topic filter is empty, starts with '/', or has invalid wildcard usage
+ */
 export function asTopicFilter(input: string): TopicFilter {
   if (input === "") {
     throw new Error(`Invalid TopicFilter: cannot be empty`);
@@ -344,12 +374,19 @@ export function asClientID(input: string): ClientID {
  */
 export const maxFixedHeaderSize = 5;
 
+/**
+ * MQTT packet fixed header containing type, flags, and remaining length.
+ */
 export type FixedHeader = {
   type: ControlPacketType;
   flags: number;
   length: number;
 };
 
+/**
+ * Union type of all possible MQTT 5.0 properties.
+ * Different packet types use different subsets of these properties.
+ */
 export type AllProperties = Partial<{
   payload_format_indicator: PayloadFormatIndicator; // 3.3.2.3.2
   message_expiry_interval: Seconds; // 3.3.2.3.3
@@ -536,6 +573,10 @@ export type PubCompPacket = {
   };
 };
 
+/**
+ * Specifies how retained messages should be handled on subscription.
+ * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html}
+ */
 export enum RetainHandling {
   Send_retained_messages_at_the_time_of_the_subscribe,
   Send_retained_messages_at_subscribe_only_if_the_subscription_does_not_currently_exist,
@@ -641,6 +682,9 @@ export type AuthPacket = {
   };
 };
 
+/**
+ * Union type of all MQTT 5.0 packet types.
+ */
 export type AllPacket =
   | ConnectPacket
   | ConnAckPacket

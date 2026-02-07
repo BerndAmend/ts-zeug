@@ -40,17 +40,26 @@ export class ClientSource
   constructor() {
   }
 
+  /**
+   * Called when the stream starts. Stores the controller reference.
+   * @param controller - The stream controller
+   */
   start(controller: ReadableStreamDefaultController) {
     this.#controller = controller;
     this.#closed = false;
   }
 
+  /**
+   * Enqueues a packet to the readable stream.
+   * @param p - The packet to enqueue
+   */
   enqueue(p: AllPacket | CustomPackets) {
     if (!this.#closed) {
       this.#controller!.enqueue(p);
     }
   }
 
+  /** Closes the readable stream. */
   close() {
     if (!this.#closed) {
       this.#controller!.close();
@@ -58,12 +67,17 @@ export class ClientSource
     }
   }
 
+  /**
+   * Signals an error on the readable stream.
+   * @param err - The error to signal
+   */
   error(err: Error) {
     if (!this.#closed) {
       this.#controller!.error(err);
     }
   }
 
+  /** Called when the stream is cancelled. */
   cancel() {
     this.#closed = true;
   }
