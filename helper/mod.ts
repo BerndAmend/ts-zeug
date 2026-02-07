@@ -590,36 +590,3 @@ export class DataWriter {
   /** Whether the buffer should grow automatically when capacity is exceeded. */
   protected automaticallyExtendBuffer: boolean;
 }
-
-/**
- * Converts a ReadableStream to an async iterator for use in for-await-of loops.
- * @template T - The stream element type
- * @param stream - The ReadableStream to iterate
- * @yields Each chunk from the stream
- * @see {@link https://jakearchibald.com/2017/async-iterators-and-generators/#making-streams-iterate}
- * @example
- * ```ts
- * for await (const chunk of streamAsyncIterator(response.body)) {
- *   console.log(chunk);
- * }
- * ```
- */
-export async function* streamAsyncIterator<T>(
-  stream: ReadableStream<T>,
-): AsyncGenerator<Awaited<T>, void> {
-  // Get a lock on the stream
-  const reader = stream.getReader();
-
-  try {
-    while (true) {
-      // Read from the stream
-      const { done, value } = await reader.read();
-      // Exit if we're done
-      if (done) return;
-      // Else yield the chunk
-      yield value;
-    }
-  } finally {
-    reader.releaseLock();
-  }
-}

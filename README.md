@@ -39,7 +39,6 @@ await using client = new mqtt.Client(
   },
 );
 
-// For Chrome, ... you have to use helper.streamAsyncIterator(client.readable)
 for await (const p of client.readable) {
   switch (p.type) {
     case mqtt.ControlPacketType.ConnAck: {

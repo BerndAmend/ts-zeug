@@ -22,7 +22,6 @@ Deno.addSignalListener("SIGINT", () => {
   client.close();
 });
 
-// For Chrome, ... you have to use helper.streamAsyncIterator(client.readable)
 try {
   for await (const p of client.readable) {
     switch (p.type) {
