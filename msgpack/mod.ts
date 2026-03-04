@@ -554,7 +554,7 @@ function deserializeTimestampExtension(reader: DataReader): Date {
  * Deserializes MessagePack binary data to a JavaScript value.
  * @param buffer - The binary data to deserialize
  * @param extensionHandler - Optional handler for custom extension types
- * @returns The deserialized JavaScript value
+ * @returns The deserialized JavaScript value or null if the buffer is empty
  * @example
  * ```ts
  * const value = deserialize(data) as { hello: string; count: number };
@@ -565,6 +565,9 @@ export function deserialize(
   extensionHandler?: (type: number, data: DataReader) => unknown,
 ): unknown {
   const reader = buffer instanceof DataReader ? buffer : new DataReader(buffer);
+  if (reader.byteLength === 0) {
+    return null;
+  }
 
   const handleExtension = (type: number, reader: DataReader) => {
     if (type === Extensions.TimeStamp) {

@@ -22,6 +22,9 @@ Deno.test(function serializeTest() {
     assertEquals(deserialize(r), expectedOutput ?? input);
   };
 
+  doit({}, "80");
+  assertEquals(deserialize(new Uint8Array()), null);
+
   doit(true, "c3");
   doit(false, "c2");
   doit({ 0: null }, "81a130c0", { 0: undefined });
