@@ -565,7 +565,7 @@ export function deserialize(
   extensionHandler?: (type: number, data: DataReader) => unknown,
 ): unknown {
   const reader = buffer instanceof DataReader ? buffer : new DataReader(buffer);
-  if (reader.byteLength === 0) {
+  if (reader.remainingSize === 0) {
     return null;
   }
 
