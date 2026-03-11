@@ -416,8 +416,7 @@ export class Serializer {
    * @throws For symbols and functions which cannot be serialized
    */
   add(
-    // deno-lint-ignore no-explicit-any
-    arg: any,
+    arg: unknown,
     options = {
       transferTypedArraysAsBinary: false,
       serializeNumbersAsFloats: false,
@@ -485,11 +484,11 @@ export class Serializer {
           return;
         }
         {
-          const keys = Object.keys(arg);
-          this.addMapHeader(keys.length);
-          for (const k of keys) {
+          const entries = Object.entries(arg);
+          this.addMapHeader(entries.length);
+          for (const [k, v] of entries) {
             this.add(k);
-            this.add(arg[k]);
+            this.add(v);
           }
         }
         return;
@@ -577,136 +576,138 @@ export function deserialize(
   const pos = reader.pos;
   try {
     const handleExtension = (type: number, reader: DataReader) => {
-    if (type === Extensions.TimeStamp) {
-      return deserializeTimestampExtension(reader);
-    }
-    if (extensionHandler === undefined) {
-      throw new Error(`cannot handle unknown extension ${type}`);
-    }
-    return extensionHandler(type, reader);
-  };
-
-  const handleArray = (length: number) => {
-    const r = new Array(length);
-    for (let i = 0; i < length; ++i) {
-      r[i] = next();
-    }
-    return r;
-  };
-
-  const handleMap = (length: number) => {
-    // deno-lint-ignore no-explicit-any
-    const r: any = {};
-    for (let i = 0; i < length; ++i) {
-      const k = next();
-      const v = next();
-      r[k] = v;
-    }
-    return r;
-  };
-
-  const next = () => {
-    const format = reader.getUint8() as Formats;
-    // Formats.positive_fixint
-    if (format <= Formats.positive_fixint_end) {
-      return format as number;
-    }
-    // Formats.negative_fixint
-    if (format >= Formats.negative_fixint_start) {
-      return ((format as number) & 0b1_1111) +
-        NumericLimits.negative_fixint_min;
-    }
-
-    // Formats.fixmap:
-    if ((format & 0b1111_0000) === Formats.fixmap_start) {
-      return handleMap((format as number) & 0b1111);
-    }
-
-    // Formats.fixarray:
-    if ((format & 0b1111_0000) === Formats.fixarray_start) {
-      return handleArray((format as number) & 0b1111);
-    }
-
-    if ((format & 0b1110_0000) === Formats.fixstr_start) {
-      return reader.getUTF8String(format & 0b1_1111);
-    }
-
-    switch (format) {
-      case Formats.nil:
-        return undefined;
-      case Formats.never_used:
-        return;
-      case Formats.boolean_false:
-        return false;
-      case Formats.boolean_true:
-        return true;
-      case Formats.bin_8:
-        return reader.getUint8Array(reader.getUint8());
-      case Formats.bin_16:
-        return reader.getUint8Array(reader.getUint16());
-      case Formats.bin_32:
-        return reader.getUint8Array(reader.getUint32());
-      case Formats.ext_8: {
-        const length = reader.getUint8();
-        const type = reader.getInt8();
-        return handleExtension(type, reader.getDataReader(length));
+      if (type === Extensions.TimeStamp) {
+        return deserializeTimestampExtension(reader);
       }
-      case Formats.ext_16: {
-        const length = reader.getUint16();
-        const type = reader.getInt8();
-        return handleExtension(type, reader.getDataReader(length));
+      if (extensionHandler === undefined) {
+        throw new Error(`cannot handle unknown extension ${type}`);
       }
-      case Formats.ext_32: {
-        const length = reader.getUint32();
-        const type = reader.getInt8();
-        return handleExtension(type, reader.getDataReader(length));
+      return extensionHandler(type, reader);
+    };
+
+    const handleArray = (length: number) => {
+      const r = new Array(length);
+      for (let i = 0; i < length; ++i) {
+        r[i] = next();
       }
-      case Formats.float_32:
-        return reader.getFloat32();
-      case Formats.float_64:
-        return reader.getFloat64();
-      case Formats.uint_8:
-        return reader.getUint8();
-      case Formats.uint_16:
-        return reader.getUint16();
-      case Formats.uint_32:
-        return reader.getUint32();
-      case Formats.uint_64:
-        return reader.getBigUintOrUint64();
-      case Formats.int_8:
-        return reader.getInt8();
-      case Formats.int_16:
-        return reader.getInt16();
-      case Formats.int_32:
-        return reader.getInt32();
-      case Formats.int_64:
-        return reader.getBigIntOrInt64();
-      case Formats.fixext_1:
-        return handleExtension(reader.getInt8(), reader.getDataReader(1));
-      case Formats.fixext_2:
-        return handleExtension(reader.getInt8(), reader.getDataReader(2));
-      case Formats.fixext_4:
-        return handleExtension(reader.getInt8(), reader.getDataReader(4));
-      case Formats.fixext_8:
-        return handleExtension(reader.getInt8(), reader.getDataReader(8));
-      case Formats.fixext_16:
-        return handleExtension(reader.getInt8(), reader.getDataReader(16));
-      case Formats.str_8:
-        return reader.getUTF8String(reader.getUint8());
-      case Formats.str_16:
-        return reader.getUTF8String(reader.getUint16());
-      case Formats.str_32:
-        return reader.getUTF8String(reader.getUint32());
-      case Formats.array_16:
-        return handleArray(reader.getUint16());
-      case Formats.array_32:
-        return handleArray(reader.getUint32());
-      case Formats.map_16:
-        return handleMap(reader.getUint16());
-      case Formats.map_32:
-        return handleMap(reader.getUint32());
-    }
-  };
+      return r;
+    };
+
+    const handleMap = (length: number) => {
+      const r: Record<string | number, unknown> = {};
+      for (let i = 0; i < length; ++i) {
+        const k = next();
+        if (typeof k !== "string" && typeof k !== "number") {
+          throw new Error(`map key must be string or number, got ${typeof k}`);
+        }
+        const v = next();
+        r[k] = v;
+      }
+      return r;
+    };
+
+    const next = () => {
+      const format = reader.getUint8() as Formats;
+      // Formats.positive_fixint
+      if (format <= Formats.positive_fixint_end) {
+        return format as number;
+      }
+      // Formats.negative_fixint
+      if (format >= Formats.negative_fixint_start) {
+        return ((format as number) & 0b1_1111) +
+          NumericLimits.negative_fixint_min;
+      }
+
+      // Formats.fixmap:
+      if ((format & 0b1111_0000) === Formats.fixmap_start) {
+        return handleMap((format as number) & 0b1111);
+      }
+
+      // Formats.fixarray:
+      if ((format & 0b1111_0000) === Formats.fixarray_start) {
+        return handleArray((format as number) & 0b1111);
+      }
+
+      if ((format & 0b1110_0000) === Formats.fixstr_start) {
+        return reader.getUTF8String(format & 0b1_1111);
+      }
+
+      switch (format) {
+        case Formats.nil:
+          return undefined;
+        case Formats.never_used:
+          return;
+        case Formats.boolean_false:
+          return false;
+        case Formats.boolean_true:
+          return true;
+        case Formats.bin_8:
+          return reader.getUint8Array(reader.getUint8());
+        case Formats.bin_16:
+          return reader.getUint8Array(reader.getUint16());
+        case Formats.bin_32:
+          return reader.getUint8Array(reader.getUint32());
+        case Formats.ext_8: {
+          const length = reader.getUint8();
+          const type = reader.getInt8();
+          return handleExtension(type, reader.getDataReader(length));
+        }
+        case Formats.ext_16: {
+          const length = reader.getUint16();
+          const type = reader.getInt8();
+          return handleExtension(type, reader.getDataReader(length));
+        }
+        case Formats.ext_32: {
+          const length = reader.getUint32();
+          const type = reader.getInt8();
+          return handleExtension(type, reader.getDataReader(length));
+        }
+        case Formats.float_32:
+          return reader.getFloat32();
+        case Formats.float_64:
+          return reader.getFloat64();
+        case Formats.uint_8:
+          return reader.getUint8();
+        case Formats.uint_16:
+          return reader.getUint16();
+        case Formats.uint_32:
+          return reader.getUint32();
+        case Formats.uint_64:
+          return reader.getBigUintOrUint64();
+        case Formats.int_8:
+          return reader.getInt8();
+        case Formats.int_16:
+          return reader.getInt16();
+        case Formats.int_32:
+          return reader.getInt32();
+        case Formats.int_64:
+          return reader.getBigIntOrInt64();
+        case Formats.fixext_1:
+          return handleExtension(reader.getInt8(), reader.getDataReader(1));
+        case Formats.fixext_2:
+          return handleExtension(reader.getInt8(), reader.getDataReader(2));
+        case Formats.fixext_4:
+          return handleExtension(reader.getInt8(), reader.getDataReader(4));
+        case Formats.fixext_8:
+          return handleExtension(reader.getInt8(), reader.getDataReader(8));
+        case Formats.fixext_16:
+          return handleExtension(reader.getInt8(), reader.getDataReader(16));
+        case Formats.str_8:
+          return reader.getUTF8String(reader.getUint8());
+        case Formats.str_16:
+          return reader.getUTF8String(reader.getUint16());
+        case Formats.str_32:
+          return reader.getUTF8String(reader.getUint32());
+        case Formats.array_16:
+          return handleArray(reader.getUint16());
+        case Formats.array_32:
+          return handleArray(reader.getUint32());
+        case Formats.map_16:
+          return handleMap(reader.getUint16());
+        case Formats.map_32:
+          return handleMap(reader.getUint32());
+      }
+    };
 
     return next();
   } catch (e) {
