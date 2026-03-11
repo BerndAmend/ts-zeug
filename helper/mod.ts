@@ -19,6 +19,16 @@ export type Buffer =
   | SharedArrayBuffer;
 
 /**
+ * Error thrown when more data is expected but the buffer is empty.
+ */
+export class IncompleteDataError extends Error {
+  constructor(message: string = "Not enough data in buffer") {
+    super(message);
+    this.name = "IncompleteDataError";
+  }
+}
+
+/**
  * Symbol used for nominal/branded types.
  * @see {@link Branded}
  */
@@ -363,7 +373,7 @@ export class DataReader {
 
   #getReadPosition(byteLength: number): number {
     if (this.#pos + byteLength > this.byteLength) {
-      throw new Error(
+      throw new IncompleteDataError(
         `length (${byteLength}) exceeds the remaining size of the buffer (${
           this.byteLength - this.#pos
         })`,

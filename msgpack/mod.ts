@@ -6,7 +6,12 @@
  * @license MIT
  * @copyright 2023-2026 Bernd Amend
  */
-import { DataReader, DataWriter, intoUint8Array } from "../helper/mod.ts";
+import {
+  DataReader,
+  DataWriter,
+  IncompleteDataError,
+  intoUint8Array,
+} from "../helper/mod.ts";
 
 const enum Formats {
   positive_fixint_start = 0x00,
@@ -569,7 +574,9 @@ export function deserialize(
     return null;
   }
 
-  const handleExtension = (type: number, reader: DataReader) => {
+  const pos = reader.pos;
+  try {
+    const handleExtension = (type: number, reader: DataReader) => {
     if (type === Extensions.TimeStamp) {
       return deserializeTimestampExtension(reader);
     }
@@ -701,5 +708,55 @@ export function deserialize(
     }
   };
 
-  return next();
+    return next();
+  } catch (e) {
+    reader.pos = pos;
+    throw e;
+  }
+}
+
+/**
+ * A TransformStream that deserializes MessagePack messages from a byte stream.
+ * Handles partial messages and reassembly across chunk boundaries.
+ */
+export class DeserializerStream extends TransformStream<Uint8Array, unknown> {
+  #partialChunk?: Uint8Array;
+
+  /**
+   * Creates a new DeserializerStream.
+   * @param extensionHandler - Optional handler for custom extension types
+   */
+  constructor(
+    extensionHandler?: (type: number, data: DataReader) => unknown,
+  ) {
+    super({
+      transform: (chunk, controller) => {
+        if (this.#partialChunk) {
+          const newChunk = new Uint8Array(
+            this.#partialChunk.length + chunk.length,
+          );
+          newChunk.set(this.#partialChunk);
+          newChunk.set(chunk, this.#partialChunk.length);
+          this.#partialChunk = undefined;
+          chunk = newChunk;
+        }
+
+        const reader = new DataReader(chunk);
+        while (reader.hasMoreData) {
+          const pos = reader.pos;
+          try {
+            controller.enqueue(deserialize(reader, extensionHandler));
+          } catch (e) {
+            if (e instanceof IncompleteDataError) {
+              reader.pos = pos;
+              this.#partialChunk = reader.getUint8Array(reader.remainingSize);
+              return;
+            }
+            controller.error(`Error while deserializing: ${e}`);
+            return;
+          }
+        }
+      },
+    });
+  }
 }
