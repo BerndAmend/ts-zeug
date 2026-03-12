@@ -1,6 +1,6 @@
 {
   "name": "@bernd/ts-zeug",
-  "version": "1.5.5",
+  "version": "1.5.6",
   "license": "MIT",
   "exports": "./mod.ts",
   "tasks": {
@@ -16,5 +16,21 @@
     "useUnknownInCatchVariables": true,
     "noImplicitOverride": true,
     "noUncheckedIndexedAccess": true
+  },
+  "lint": {
+    "rules": {
+      "tags": [
+        "recommended"
+      ],
+      "include": [
+        "eqeqeq",
+        "guard-for-in",
+        "no-self-compare",
+        "no-sync-fn-in-async-fn",
+        "no-throw-literal",
+        "no-useless-rename",
+        "single-var-declarator"
+      ]
+    }
   }
 }

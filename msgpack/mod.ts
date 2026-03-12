@@ -333,15 +333,15 @@ export class Serializer {
     }
 
     const data = intoUint8Array(array);
-    if (data.byteLength == 1) {
+    if (data.byteLength === 1) {
       this.#addFormat(Formats.fixext_1);
-    } else if (data.byteLength == 2) {
+    } else if (data.byteLength === 2) {
       this.#addFormat(Formats.fixext_2);
-    } else if (data.byteLength == 4) {
+    } else if (data.byteLength === 4) {
       this.#addFormat(Formats.fixext_4);
-    } else if (data.byteLength == 8) {
+    } else if (data.byteLength === 8) {
       this.#addFormat(Formats.fixext_8);
-    } else if (data.byteLength == 16) {
+    } else if (data.byteLength === 16) {
       this.#addFormat(Formats.fixext_16);
     } else if (data.byteLength <= Length.bit_8) {
       this.#addFormat(Formats.ext_8);

@@ -69,7 +69,7 @@ function readVariableByteInteger(
 
     multiplier *= 128;
 
-    if ((encodedByte & 128) == 0) {
+    if ((encodedByte & 128) === 0) {
       break;
     }
   }

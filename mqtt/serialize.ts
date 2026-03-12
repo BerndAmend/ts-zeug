@@ -702,7 +702,7 @@ export function serializeSubscribePacket(
   w: Writer,
 ): Uint8Array {
   w.beginMessage();
-  if (packet.subscriptions.length == 0) {
+  if (packet.subscriptions.length === 0) {
     throw new Error("Empty subscriptions are not allowed");
   }
 
@@ -772,7 +772,7 @@ export function serializeUnsubscribePacket(
     tw.addUserProperties(p?.user_properties);
   });
 
-  if (packet.topic_filters.length == 0) {
+  if (packet.topic_filters.length === 0) {
     throw new Error("Empty subscriptions are not allowed");
   }
 
