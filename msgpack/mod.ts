@@ -12,6 +12,107 @@ import {
   IncompleteDataError,
   intoUint8Array,
 } from "../helper/mod.ts";
+import { z, type ZodTypeAny } from "@zod/zod";
+
+export interface BaseBuiltSchema {
+  isUnion?: never;
+  zodSchema: ZodTypeAny;
+  idToKey: Record<number, string>;
+  keyToId: Record<string, number>;
+  childSchemas: Record<string, AnySchema>;
+  parse(data: unknown): unknown;
+}
+
+export interface DiscriminatedUnionSchema {
+  isUnion: true;
+  discriminatorKey: string;
+  discriminatorId: number;
+  types: Record<string, { id: number; schema: AnySchema }>;
+  idToTypeInfo: Record<number, { stringValue: string; schema: AnySchema }>;
+  zodSchema: ZodTypeAny;
+  parse(data: unknown): unknown;
+}
+
+export type AnySchema = BaseBuiltSchema | DiscriminatedUnionSchema;
+
+export type SchemaDef = {
+  [key: string]: { id: number; type: ZodTypeAny | AnySchema };
+};
+
+export function buildSchema<T extends SchemaDef>(def: T) {
+  const shape: Record<string, ZodTypeAny> = {};
+  const idToKey: Record<number, string> = {};
+  const keyToId: Record<string, number> = {};
+  const childSchemas: Record<string, AnySchema> = {};
+
+  for (const [key, val] of Object.entries(def)) {
+    idToKey[val.id] = key;
+    keyToId[key] = val.id;
+    if ("zodSchema" in val.type) {
+      shape[key] = val.type.zodSchema;
+      childSchemas[key] = val.type;
+    } else {
+      shape[key] = val.type;
+    }
+  }
+
+  // We have to cast through unkown as TypeScript cannot easily deduce that T[K]["type"] mapped
+  // correctly satisfies a valid Zod object shape when unwrapped from BaseBuiltSchema.
+  const zodSchema = z.object(shape) as unknown as z.ZodObject<
+    {
+      [K in keyof T]: T[K]["type"] extends AnySchema
+        ? T[K]["type"]["zodSchema"] extends z.ZodTypeAny
+          ? T[K]["type"]["zodSchema"]
+        : never
+        : T[K]["type"] extends z.ZodTypeAny ? T[K]["type"]
+        : never;
+    }
+  >;
+
+  return {
+    zodSchema,
+    idToKey,
+    keyToId,
+    childSchemas,
+    parse(data: unknown) {
+      return zodSchema.parse(data) as z.infer<typeof zodSchema>;
+    },
+  };
+}
+
+export type BuiltSchema = ReturnType<typeof buildSchema>;
+
+export function buildDiscriminatedUnion<
+  DiscKey extends string,
+  DiscId extends number,
+  Types extends Record<string, { id: number; schema: AnySchema }>
+>(config: {
+  discriminatorKey: DiscKey;
+  discriminatorId: DiscId;
+  types: Types;
+}): DiscriminatedUnionSchema {
+  const idToTypeInfo: Record<number, { stringValue: string; schema: AnySchema }> = {};
+  const zodTypes: ZodTypeAny[] = [];
+
+  for (const [stringValue, typeDef] of Object.entries(config.types)) {
+    idToTypeInfo[typeDef.id] = { stringValue, schema: typeDef.schema };
+    zodTypes.push(typeDef.schema.zodSchema); 
+  }
+
+  const zodSchema = z.union(zodTypes as [ZodTypeAny, ZodTypeAny, ...ZodTypeAny[]]);
+
+  return {
+    isUnion: true,
+    discriminatorKey: config.discriminatorKey,
+    discriminatorId: config.discriminatorId,
+    types: config.types,
+    idToTypeInfo,
+    zodSchema,
+    parse(data: unknown) {
+      return zodSchema.parse(data);
+    }
+  };
+}
 
 const enum Formats {
   positive_fixint_start = 0x00,
@@ -417,10 +518,11 @@ export class Serializer {
    */
   add(
     arg: unknown,
-    options = {
-      transferTypedArraysAsBinary: false,
-      serializeNumbersAsFloats: false,
-    },
+    options: {
+      transferTypedArraysAsBinary?: boolean;
+      serializeNumbersAsFloats?: boolean;
+      schema?: AnySchema;
+    } = {},
   ): void {
     switch (typeof arg) {
       case "string":
@@ -484,11 +586,53 @@ export class Serializer {
           return;
         }
         {
+          const schema = options.schema;
+          
+          if (schema && "isUnion" in schema) {
+            const uSchema = schema as DiscriminatedUnionSchema;
+            const discValue = (arg as any)[uSchema.discriminatorKey];
+            const typeInfo = uSchema.types[discValue];
+            if (!typeInfo) {
+              throw new Error(`Union schema missing mapped type for discriminator value: ${discValue}`);
+            }
+            const concreteSchema = typeInfo.schema;
+            const keys = Object.keys(arg);
+            this.addMapHeader(keys.length);
+            
+            this.addInt(uSchema.discriminatorId);
+            this.addInt(typeInfo.id);
+
+            for (const [k, v] of Object.entries(arg)) {
+              if (k === uSchema.discriminatorKey) continue;
+              const cSchema = concreteSchema as BaseBuiltSchema;
+              const mappedId = cSchema.keyToId[k];
+              if (mappedId !== undefined) {
+                this.addInt(mappedId);
+                const childSchema = cSchema.childSchemas[k];
+                this.add(v, { ...options, schema: childSchema });
+              } else {
+                this.addString(k);
+                this.add(v, options);
+              }
+            }
+            return;
+          }
+
           const entries = Object.entries(arg);
           this.addMapHeader(entries.length);
           for (const [k, v] of entries) {
-            this.add(k);
-            this.add(v);
+            const baseSchema = schema as BaseBuiltSchema;
+            if (baseSchema && !("isUnion" in baseSchema)) {
+              const id = baseSchema.keyToId[k];
+              if (id !== undefined) {
+                this.addInt(id);
+                const childSchema = baseSchema.childSchemas[k];
+                this.add(v, { ...options, schema: childSchema });
+                continue;
+              }
+            }
+            this.addString(k);
+            this.add(v, options);
           }
         }
         return;
@@ -517,9 +661,14 @@ export class Serializer {
  */
 export function serialize(
   arg: unknown,
+  options?: {
+    transferTypedArraysAsBinary?: boolean;
+    serializeNumbersAsFloats?: boolean;
+    schema?: AnySchema;
+  },
 ): Uint8Array {
   const s = new Serializer();
-  s.add(arg);
+  s.add(arg, options);
   return s.getBufferView();
 }
 
@@ -564,13 +713,14 @@ function deserializeTimestampExtension(reader: DataReader): Date {
  * const value = deserialize(data) as { hello: string; count: number };
  * ```
  */
-export function deserialize(
+export function deserialize<T = unknown>(
   buffer: DataReader | Uint8Array,
   extensionHandler?: (type: number, data: DataReader) => unknown,
-): unknown {
+  options?: { schema?: AnySchema },
+): T {
   const reader = buffer instanceof DataReader ? buffer : new DataReader(buffer);
   if (reader.remainingSize === 0) {
-    return null;
+    return null as T;
   }
 
   const pos = reader.pos;
@@ -593,20 +743,47 @@ export function deserialize(
       return r;
     };
 
-    const handleMap = (length: number) => {
+    const handleMap = (length: number, currentSchema?: AnySchema) => {
       const r: Record<string | number, unknown> = {};
+      let concreteSchema: AnySchema | undefined = 
+        currentSchema && !("isUnion" in currentSchema) ? currentSchema : undefined;
+
       for (let i = 0; i < length; ++i) {
-        const k = next();
+        let k = next() as string | number;
+
+        if (currentSchema && "isUnion" in currentSchema && i === 0 && typeof k === "number") {
+          const uSchema = currentSchema as DiscriminatedUnionSchema;
+          if (k === uSchema.discriminatorId) {
+            const discValueId = next() as number;
+            const typeInfo = uSchema.idToTypeInfo[discValueId];
+            if (!typeInfo) throw new Error("Unknown discriminator ID");
+            concreteSchema = typeInfo.schema;
+            r[uSchema.discriminatorKey] = typeInfo.stringValue;
+            continue;
+          } else {
+            throw new Error("Discriminated union discriminator must be serialized as the first key");
+          }
+        }
+
         if (typeof k !== "string" && typeof k !== "number") {
           throw new Error(`map key must be string or number, got ${typeof k}`);
         }
-        const v = next();
+        let childSchema: AnySchema | undefined = undefined;
+        if (concreteSchema && !("isUnion" in concreteSchema) && typeof k === "number") {
+          const baseConcrete = concreteSchema as BaseBuiltSchema;
+          const mappedKey = baseConcrete.idToKey[k];
+          if (mappedKey !== undefined) {
+            k = mappedKey;
+            childSchema = baseConcrete.childSchemas[mappedKey];
+          }
+        }
+        const v = next(childSchema);
         r[k] = v;
       }
       return r;
     };
 
-    const next = () => {
+    const next = (currentSchema?: AnySchema): unknown => {
       const format = reader.getUint8() as Formats;
       // Formats.positive_fixint
       if (format <= Formats.positive_fixint_end) {
@@ -620,7 +797,7 @@ export function deserialize(
 
       // Formats.fixmap:
       if ((format & 0b1111_0000) === Formats.fixmap_start) {
-        return handleMap((format as number) & 0b1111);
+        return handleMap((format as number) & 0b1111, currentSchema);
       }
 
       // Formats.fixarray:
@@ -703,13 +880,17 @@ export function deserialize(
         case Formats.array_32:
           return handleArray(reader.getUint32());
         case Formats.map_16:
-          return handleMap(reader.getUint16());
+          return handleMap(reader.getUint16(), currentSchema);
         case Formats.map_32:
-          return handleMap(reader.getUint32());
+          return handleMap(reader.getUint32(), currentSchema);
       }
     };
 
-    return next();
+    const result = next(options?.schema);
+    if (options?.schema?.parse) {
+      return options.schema.parse(result) as T;
+    }
+    return result as T;
   } catch (e) {
     reader.pos = pos;
     throw e;

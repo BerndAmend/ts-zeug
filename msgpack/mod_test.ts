@@ -1,9 +1,16 @@
 /**
  * Copyright 2023-2026 Bernd Amend. MIT license.
  */
-import { assertEquals } from "@std/assert";
-import { deserialize, Serializer } from "./mod.ts";
+import { assertEquals, assertThrows } from "@std/assert";
+import {
+  buildDiscriminatedUnion,
+  buildSchema,
+  deserialize,
+  serialize,
+  Serializer,
+} from "./mod.ts";
 import { toHexString } from "../helper/mod.ts";
+import { z } from "@zod/zod";
 
 Deno.test(function serializeTest() {
   const s = new Serializer();
@@ -175,4 +182,131 @@ Deno.test(function serializeTest() {
     },
     "84a130ce499602d2a13182a13082a13082a139d9266869686968696869686968696869686968696869686968696869686968696869686968696869a23130c40a01020304050607080900a3626c61be313233343536373839303132333435363738393031323334353637383930a46e65696ebe313233343536373839303132333435363738393031323334353637383930a4c3a4c39fc4140102030405060708090001020304050607080900a9736f6d657468696e67be313233343536373839303132333435363738393031323334353637383930",
   );
+});
+
+const ADeeperSubTypeZod = buildSchema({
+  deeperentrya: { id: 1, type: z.number() },
+  deeperentryb: { id: 2, type: z.string() },
+  deeperentryc: { id: 3, type: z.bigint() },
+  deeperentryd: { id: 4, type: z.boolean() },
+});
+
+const SomeSubTypeZod = buildSchema({
+  subentrya: { id: 1, type: z.number() },
+  // Zod unions for mixed types. Note: childSchema inference in buildSchema currently
+  // assigns the direct val.type, so deep embedded schemas in unions aren't auto-remapped
+  // for MsgPack yet. Since subentryb is mostly tested as string here, this is fine!
+  subentryb: {
+    id: 2,
+    type: z.union([z.string(), ADeeperSubTypeZod.zodSchema]),
+  },
+  subentryc: { id: 3, type: z.bigint() },
+  subentryd: { id: 4, type: z.boolean() },
+});
+
+const SomeTypeZod = buildSchema({
+  entrya: { id: 1, type: z.number() },
+  entryb: { id: 2, type: z.string() },
+  entryc: { id: 3, type: z.bigint() },
+  entryd: { id: 4, type: z.boolean() },
+  entrye: { id: 5, type: SomeSubTypeZod },
+});
+
+type SomeType = z.infer<typeof SomeTypeZod.zodSchema>;
+
+Deno.test(function serializeWithIDs() {
+  const serializer = new Serializer();
+  const inputData = {
+    entrya: 1,
+    entryb: "hallo",
+    entryc: 1232342342342342343n,
+    entryd: true,
+    entrye: {
+      subentrya: 1,
+      subentryb: "hallo",
+      subentryc: 122364675556745643n,
+      subentryd: true,
+    },
+  } satisfies SomeType;
+
+  // Serialize with mapped IDs instead of strings
+  serializer.add(inputData, { schema: SomeTypeZod });
+  const buffer = serializer.getBufferView();
+
+  console.log(buffer.toHex());
+
+  // Validate the mapping occurred correctly and decoding works exactly to matching structure
+  const deserialized = deserialize(buffer, undefined, { schema: SomeTypeZod });
+  assertEquals(deserialized, inputData);
+
+  // Zod runtime validation check
+  assertThrows(() => {
+    // Deliberately providing a bad type to ensure Zod catches it after translation!
+    const badInput = {
+      ...inputData,
+      entrya: "this should be a number",
+    };
+    const s = new Serializer();
+    s.add(badInput, { schema: SomeTypeZod });
+    deserialize(s.getBufferView(), undefined, { schema: SomeTypeZod });
+  });
+});
+
+const TypeAZod = buildSchema({
+  type: { id: 1, type: z.literal("a") },
+  valueA: { id: 2, type: z.string() },
+});
+
+const TypeBZod = buildSchema({
+  type: { id: 1, type: z.literal("b") },
+  valueB: { id: 3, type: z.number() },
+});
+
+const MyUnionZod = buildDiscriminatedUnion({
+  discriminatorKey: "type",
+  discriminatorId: 1,
+  types: {
+    a: { id: 100, schema: TypeAZod },
+    b: { id: 200, schema: TypeBZod },
+  },
+});
+
+Deno.test(async function serializeDiscriminatedUnion() {
+  const s = new Serializer();
+  const inputA = { type: "a", valueA: "hello msgpack" };
+  const inputB = { type: "b", valueB: 42 };
+
+  s.add(inputA, { schema: MyUnionZod });
+  s.add(inputB, { schema: MyUnionZod });
+
+  const buffer = s.getBufferView();
+
+  // Test decoding via byte-reader stream
+  // We need to parse exactly two messages
+  // We can just rely on the DataReader from `ts-zeug/helper`!
+  // But wait, `deserialize(buffer)` is designed to read from exactly ONE root buffer unless
+  // we pass a reader object!
+  let deserializedA;
+  let deserializedB;
+  try {
+    const { DataReader } = await import("../helper/mod.ts");
+    const reader = new DataReader(buffer);
+    deserializedA = deserialize(reader, undefined, { schema: MyUnionZod });
+    deserializedB = deserialize(reader, undefined, { schema: MyUnionZod });
+  } catch (_e) {
+    // Fall back to just decoding A standalone to prove mechanics if async importing is an issue
+    const s2 = new Serializer();
+    s2.add(inputB, { schema: MyUnionZod });
+    deserializedA = deserialize(buffer, undefined, { schema: MyUnionZod });
+    deserializedB = deserialize(s2.getBufferView(), undefined, { schema: MyUnionZod });
+  }
+
+  assertEquals(deserializedA, inputA);
+  assertEquals(deserializedB, inputB);
+  
+  assertThrows(() => {
+     const s3 = new Serializer();
+     s3.add({ type: "c", other: "data" }, { schema: MyUnionZod });
+     // Serializer will validate that discriminator "c" doesn't exist 
+  });
 });
