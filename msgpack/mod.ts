@@ -13,78 +13,78 @@ import {
   intoUint8Array,
 } from "../helper/mod.ts";
 
-const enum Formats {
-  positive_fixint_start = 0x00,
-  positive_fixint_end = 0x7f,
+const Formats = {
+  positive_fixint_start: 0x00,
+  positive_fixint_end: 0x7f,
 
-  fixmap_start = 0x80,
-  fixmap_end = 0x8f,
+  fixmap_start: 0x80,
+  fixmap_end: 0x8f,
 
-  fixarray_start = 0x90,
-  fixarray_end = 0x9f,
+  fixarray_start: 0x90,
+  fixarray_end: 0x9f,
 
-  fixstr_start = 0xa0,
-  fixstr_end = 0xbf,
+  fixstr_start: 0xa0,
+  fixstr_end: 0xbf,
 
-  nil = 0xc0,
-  never_used = 0xc1,
-  boolean_false = 0xc2,
-  boolean_true = 0xc3,
-  bin_8 = 0xc4,
-  bin_16 = 0xc5,
-  bin_32 = 0xc6,
-  ext_8 = 0xc7,
-  ext_16 = 0xc8,
-  ext_32 = 0xc9,
-  float_32 = 0xca,
-  float_64 = 0xcb,
-  uint_8 = 0xcc,
-  uint_16 = 0xcd,
-  uint_32 = 0xce,
-  uint_64 = 0xcf,
-  int_8 = 0xd0,
-  int_16 = 0xd1,
-  int_32 = 0xd2,
-  int_64 = 0xd3,
-  fixext_1 = 0xd4,
-  fixext_2 = 0xd5,
-  fixext_4 = 0xd6,
-  fixext_8 = 0xd7,
-  fixext_16 = 0xd8,
-  str_8 = 0xd9,
-  str_16 = 0xda,
-  str_32 = 0xdb,
-  array_16 = 0xdc,
-  array_32 = 0xdd,
-  map_16 = 0xde,
-  map_32 = 0xdf,
+  nil: 0xc0,
+  never_used: 0xc1,
+  boolean_false: 0xc2,
+  boolean_true: 0xc3,
+  bin_8: 0xc4,
+  bin_16: 0xc5,
+  bin_32: 0xc6,
+  ext_8: 0xc7,
+  ext_16: 0xc8,
+  ext_32: 0xc9,
+  float_32: 0xca,
+  float_64: 0xcb,
+  uint_8: 0xcc,
+  uint_16: 0xcd,
+  uint_32: 0xce,
+  uint_64: 0xcf,
+  int_8: 0xd0,
+  int_16: 0xd1,
+  int_32: 0xd2,
+  int_64: 0xd3,
+  fixext_1: 0xd4,
+  fixext_2: 0xd5,
+  fixext_4: 0xd6,
+  fixext_8: 0xd7,
+  fixext_16: 0xd8,
+  str_8: 0xd9,
+  str_16: 0xda,
+  str_32: 0xdb,
+  array_16: 0xdc,
+  array_32: 0xdd,
+  map_16: 0xde,
+  map_32: 0xdf,
 
-  negative_fixint_start = 0xe0,
-  negative_fixint_end = 0xff,
-}
+  negative_fixint_start: 0xe0,
+  negative_fixint_end: 0xff,
+} as const;
 
-const enum Length {
-  bit_8 = 2 ** 8 - 1,
-  bit_16 = 2 ** 16 - 1,
-  bit_32 = 2 ** 32 - 1,
-  max_header_length = 1 + 4,
-}
+const Length = {
+  bit_8: 2 ** 8 - 1,
+  bit_16: 2 ** 16 - 1,
+  bit_32: 2 ** 32 - 1,
+  max_header_length: 1 + 4,
+} as const;
 
-const enum Extensions {
-  TimeStamp = -1,
-}
+const Extensions = {
+  TimeStamp: -1,
+} as const;
 
-const enum NumericLimits {
-  negative_fixint_min = -0x20,
-  int_8_min = -0x80,
-  int_16_min = -0x8000,
-  int_32_min = -0x80000000,
+const NumericLimits = {
+  negative_fixint_min: -0x20,
+  int_8_min: -0x80,
+  int_16_min: -0x8000,
+  int_32_min: -0x80000000,
 
-  positive_fixint_max = Formats.positive_fixint_end,
-  uint_8_max = 0x100 - 1,
-  uint_16_max = 0x10000 - 1,
-  uint_32_max = 0x100000000 - 1,
-}
+  positive_fixint_max: Formats.positive_fixint_end,
+  uint_8_max: 0x100 - 1,
+  uint_16_max: 0x10000 - 1,
+  uint_32_max: 0x100000000 - 1,
+} as const;
 
 /**
  * A MessagePack serializer for encoding JavaScript values into binary format.
@@ -497,7 +497,7 @@ export class Serializer {
     }
   }
 
-  #addFormat(format: Formats) {
+  #addFormat(format: number) {
     this.#writer.addUint8(format);
   }
 
@@ -607,25 +607,25 @@ export function deserialize(
     };
 
     const next = () => {
-      const format = reader.getUint8() as Formats;
+      const format = reader.getUint8();
       // Formats.positive_fixint
       if (format <= Formats.positive_fixint_end) {
-        return format as number;
+        return format;
       }
       // Formats.negative_fixint
       if (format >= Formats.negative_fixint_start) {
-        return ((format as number) & 0b1_1111) +
+        return (format & 0b1_1111) +
           NumericLimits.negative_fixint_min;
       }
 
       // Formats.fixmap:
       if ((format & 0b1111_0000) === Formats.fixmap_start) {
-        return handleMap((format as number) & 0b1111);
+        return handleMap(format & 0b1111);
       }
 
       // Formats.fixarray:
       if ((format & 0b1111_0000) === Formats.fixarray_start) {
-        return handleArray((format as number) & 0b1111);
+        return handleArray(format & 0b1111);
       }
 
       if ((format & 0b1110_0000) === Formats.fixstr_start) {
@@ -747,7 +747,7 @@ export class DeserializerStream extends TransformStream<Uint8Array, unknown> {
           const pos = reader.pos;
           try {
             controller.enqueue(deserialize(reader, extensionHandler));
-          } catch (e) {
+          } catch (e: unknown) {
             if (e instanceof IncompleteDataError) {
               reader.pos = pos;
               this.#partialChunk = reader.getUint8Array(reader.remainingSize);

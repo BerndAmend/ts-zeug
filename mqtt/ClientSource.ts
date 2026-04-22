@@ -37,8 +37,6 @@ export class ClientSource
   implements UnderlyingSource<AllPacket | CustomPackets> {
   #controller?: ReadableStreamDefaultController;
   #closed = false;
-  constructor() {
-  }
 
   /**
    * Called when the stream starts. Stores the controller reference.

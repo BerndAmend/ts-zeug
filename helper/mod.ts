@@ -22,7 +22,7 @@ export type Buffer =
  * Error thrown when more data is expected but the buffer is empty.
  */
 export class IncompleteDataError extends Error {
-  constructor(message: string = "Not enough data in buffer") {
+  constructor(message = "Not enough data in buffer") {
     super(message);
     this.name = "IncompleteDataError";
   }
@@ -100,13 +100,14 @@ export function nanoid(t = 21): NanoID {
       (
         result,
         value,
-      ) => (result += (value &= 63) < 36
-        ? value.toString(36)
-        : value < 62
-        ? (value - 26).toString(36).toUpperCase()
-        : value > 62
-        ? "-"
-        : "_"),
+      ) => (result +
+        ((value &= 63) < 36
+          ? value.toString(36)
+          : value < 62
+          ? (value - 26).toString(36).toUpperCase()
+          : value > 62
+          ? "-"
+          : "_")),
       "",
     ) as NanoID;
 }

@@ -177,9 +177,7 @@ function readProperties(
         ret.correlation_data = readBinaryData(r, options);
         break;
       case Property.Subscription_Identifier:
-        if (ret.subscription_identifier === undefined) {
-          ret.subscription_identifier = [];
-        }
+        ret.subscription_identifier ??= [];
         ret.subscription_identifier.push(readVariableByteInteger(r));
         break;
       case Property.Session_Expiry_Interval:
@@ -231,9 +229,7 @@ function readProperties(
         ret.retain_available = r.getUint8() === 1;
         break;
       case Property.User_Property:
-        if (ret.user_properties === undefined) {
-          ret.user_properties = [];
-        }
+        ret.user_properties ??= [];
         ret.user_properties.push({
           key: readUTF8String(r),
           value: readUTF8String(r),
@@ -399,7 +395,7 @@ function deserializePublishPacket(
     ret.retain = true;
   }
 
-  const qos = (fixedHeader.flags >> 1) & 0b11;
+  const qos: QoS = (fixedHeader.flags >> 1) & 0b11;
   if (qos !== QoS.At_most_once_delivery) {
     ret.qos = qos;
     ret.packet_identifier = r.getUint16() as PacketIdentifier;
@@ -557,16 +553,12 @@ function deserializeSubscribePacket(
 
   const props = readProperties(r);
   if (props?.subscription_identifier !== undefined) {
-    if (ret.properties === undefined) {
-      ret.properties = {};
-    }
+    ret.properties ??= {};
     ret.properties.subscription_identifier = props.subscription_identifier[0];
   }
 
   if (props?.user_properties !== undefined) {
-    if (ret.properties === undefined) {
-      ret.properties = {};
-    }
+    ret.properties ??= {};
     ret.properties.user_properties = props.user_properties;
   }
 
@@ -592,7 +584,7 @@ function deserializeSubscribePacket(
       subscription.retain_as_published = true;
     }
 
-    const retain_handling = flags >> 4;
+    const retain_handling: RetainHandling = flags >> 4;
     if (
       retain_handling !==
         RetainHandling.Send_retained_messages_at_the_time_of_the_subscribe

@@ -4,7 +4,8 @@
   "license": "MIT",
   "exports": "./mod.ts",
   "tasks": {
-    "dev": "deno run --watch mqtt-client.ts"
+    "dev": "deno run --watch mqtt-client.ts",
+    "eslint": "deno run -A jsr:@sigmasd/deno-eslint"
   },
   "imports": {
     "@bernd/ts-zeug": "./mod.ts",

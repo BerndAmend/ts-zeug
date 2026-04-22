@@ -253,7 +253,7 @@ export class Client implements AsyncDisposable {
       resolve: (v) => {
         console.error("The PacketIdentifier 0 shouldn't be used, but got ", v);
       },
-      reject: (_) => {},
+      reject: () => {},
     }];
   }
 
@@ -476,7 +476,7 @@ export class Client implements AsyncDisposable {
             r.releaseLock();
           }
           await con.writable.close();
-        } catch (_e) {
+        } catch {
           //          console.error("Couldn't close connection", e);
         }
         if (Error.isError(e)) {
@@ -521,38 +521,42 @@ export class Client implements AsyncDisposable {
             } client=${this.#connectPacket.keepalive}`,
           );
         }
-        this.#pingIntervalId = setInterval(async () => {
-          if (!this.#writable) {
-            return;
-          }
-          const msSinceLastPingResp = Date.now() - this.#lastPingRespReceived;
-          if (msSinceLastPingResp > (keep_alive! * 1000 * 1.5)) {
-            // console.log(
-            //   `PingResp was missing for ${msSinceLastPingResp} ms, terminate connection`,
-            // );
-          } else {
-            try {
-              await this.#writable.write(PingReqMessage);
+        this.#pingIntervalId = setInterval(() => {
+          void (async () => {
+            if (!this.#writable) {
               return;
-            } catch (e) {
-              console.log("Couldn't send ping, close connection", e);
             }
-          }
-          this.#source.enqueue({
-            type: CustomPacketType.PingFailed,
-          });
+            const msSinceLastPingResp = Date.now() - this.#lastPingRespReceived;
+            if (msSinceLastPingResp > (keep_alive! * 1000 * 1.5)) {
+              // console.log(
+              //   `PingResp was missing for ${msSinceLastPingResp} ms, terminate connection`,
+              // );
+            } else {
+              try {
+                await this.#writable.write(PingReqMessage);
+                return;
+              } catch (e) {
+                console.log("Couldn't send ping, close connection", e);
+              }
+            }
+            this.#source.enqueue({
+              type: CustomPacketType.PingFailed,
+            });
 
-          try {
-            if (this.#writable && con.writable.locked) {
-              this.#writable.releaseLock();
+            try {
+              if (this.#writable && con.writable.locked) {
+                this.#writable.releaseLock();
+              }
+              if (this.#readable && con.readable.locked) {
+                r.releaseLock();
+              }
+              await con.writable.close();
+            } catch (e) {
+              console.log("Terminate connection in ping handler failed", e);
             }
-            if (this.#readable && con.readable.locked) {
-              r.releaseLock();
-            }
-            await con.writable.close();
-          } catch (e) {
-            console.log("Terminate connection in ping handler failed", e);
-          }
+          })().catch((e) => {
+            console.error("Unhandled exception in ping interval:", e);
+          });
         }, keep_alive * 1000 - 100); // 100 is randomly selected to ensure we stay below the keep_alive time
       }
 
@@ -597,7 +601,7 @@ export class Client implements AsyncDisposable {
 
           this.#source.enqueue(p);
         }
-      } catch (_e: unknown) {
+      } catch {
         // The stream was closed, we can ignore this error, e.g. network error
       }
 
@@ -615,7 +619,7 @@ export class Client implements AsyncDisposable {
         }
         this.#writable = undefined;
         await con.writable.close();
-      } catch (_e: unknown) {
+      } catch {
         // We don't really care if an error occurred while closing the connection
       }
 
