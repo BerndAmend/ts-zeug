@@ -228,7 +228,7 @@ export class Client implements AsyncDisposable {
   #connectAck?: ConnAckPacket;
   #messageHandlerPromise: Promise<void> | undefined;
   #active = false;
-  #pingIntervalId?: number;
+  #pingIntervalId?: ReturnType<typeof setInterval>;
   #source = new ClientSource();
   #readable = new ReadableStream<AllPacket | CustomPackets>(this.#source);
 
