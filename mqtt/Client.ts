@@ -22,6 +22,7 @@ import {
   type Seconds,
   type SubAckPacket,
   type SubscribePacket,
+  type Topic,
   type UnsubAckPacket,
   type UnsubscribePacket,
 } from "./packets.ts";
@@ -39,7 +40,10 @@ import {
   Writer,
 } from "./serialize.ts";
 
-import { PublishDeserializeOptions } from "./deserialize.ts";
+import {
+  PublishDeserializeOptions,
+  type TopicAliasResolver,
+} from "./deserialize.ts";
 
 import { DeserializeStream } from "./DeserializeStream.ts";
 import {
@@ -47,6 +51,7 @@ import {
   type CustomPackets,
   CustomPacketType,
 } from "./ClientSource.ts";
+import { TopicAliasMapper } from "./TopicAliasMapper.ts";
 
 /**
  * Configuration properties for the MQTT Client.
@@ -138,6 +143,7 @@ export async function connectLowLevel(
   address: URL | string,
   options?: {
     publishDeserializeOptions?: PublishDeserializeOptions;
+    resolveTopicAlias?: TopicAliasResolver;
   },
 ): Promise<LowLevelConnection> {
   const ts = new TransformStream<Uint8Array<ArrayBuffer>, AllPacket>(
@@ -234,6 +240,10 @@ export class Client implements AsyncDisposable {
 
   #lastPingRespReceived = 0;
 
+  #outgoingAliasMapper = new TopicAliasMapper();
+  #incomingAliasToTopic = new Map<number, Topic>();
+  #incomingTopicAliasMaximum = 0;
+
   #pendingReplies: ({
     resolve: (value: AllPacket) => void;
     reject: (err: Error) => void;
@@ -299,6 +309,12 @@ export class Client implements AsyncDisposable {
   ) {
     this.#clearPendingReplies();
     this.#connectPacket = connectPacket ?? {};
+    if (this.#connectPacket.properties?.topic_alias_maximum === undefined) {
+      if (!this.#connectPacket.properties) {
+        this.#connectPacket.properties = {};
+      }
+      this.#connectPacket.properties.topic_alias_maximum = 65535;
+    }
     this.open();
   }
 
@@ -382,7 +398,11 @@ export class Client implements AsyncDisposable {
     loop: while (this.#active) {
       let con: LowLevelConnection;
       try {
-        con = await connectLowLevel(this.address, this.properties);
+        con = await connectLowLevel(this.address, {
+          ...this.properties,
+          resolveTopicAlias: (alias: number) =>
+            this.#incomingAliasToTopic.get(alias),
+        });
       } catch (e: unknown) {
         if (Error.isError(e)) {
           this.#source.enqueue({
@@ -441,6 +461,11 @@ export class Client implements AsyncDisposable {
               }
               this.#writer.maximumPacketSize = this.#connectAck?.properties
                 ?.maximum_packet_size;
+              this.#outgoingAliasMapper.maximum = this.#connectAck?.properties
+                ?.topic_alias_maximum ?? 0;
+              this.#incomingTopicAliasMaximum = this.#connectPacket.properties
+                ?.topic_alias_maximum ?? 0;
+              this.#incomingAliasToTopic.clear();
               this.#source.enqueue(this.#connectAck);
               break;
             } else if (d.value.type === ControlPacketType.Auth) {
@@ -595,6 +620,13 @@ export class Client implements AsyncDisposable {
             }
 
             case ControlPacketType.Publish: {
+              const topicAlias = p.properties?.topic_alias;
+              if (
+                topicAlias !== undefined && topicAlias > 0 &&
+                topicAlias <= this.#incomingTopicAliasMaximum
+              ) {
+                this.#incomingAliasToTopic.set(topicAlias, p.topic);
+              }
               break;
             }
           }
@@ -631,6 +663,8 @@ export class Client implements AsyncDisposable {
 
   /**
    * Publishes a message to the MQTT server.
+   * If topic aliases are available, this method will automatically substitute
+   * topic names with aliases to reduce packet size.
    * @param packet the packet to publish, the packet_identifier is set automatically
    * @returns a promise that resolves when the message was sent
    * @throws if the connection is not connected or the write fails
@@ -642,8 +676,24 @@ export class Client implements AsyncDisposable {
       throw new Error("not connected");
     }
 
-    const msg = serializePublishPacket(packet, this.#writer);
+    const overrides = this.#preparePublishAlias(packet);
+    const msg = serializePublishPacket(packet, this.#writer, overrides);
     await this.#writable.write(msg);
+  }
+
+  /**
+   * Computes topic alias overrides for an outgoing PUBLISH.
+   * Delegates to {@link TopicAliasMapper}.
+   * @returns Overrides for serializePublishPacket, or undefined if no alias is available
+   */
+  #preparePublishAlias(
+    packet: MakeSerializePacketType<PublishPacket>,
+  ): { topic?: Topic; topic_alias?: number } | undefined {
+    const overrides = this.#outgoingAliasMapper.preparePublish(packet.topic);
+    if (overrides?.topic === "") {
+      return { topic: "" as Topic, topic_alias: overrides.topic_alias };
+    }
+    return overrides as { topic?: Topic; topic_alias?: number } | undefined;
   }
 
   /**

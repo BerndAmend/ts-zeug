@@ -7,6 +7,7 @@ import {
   deserializePacket,
   type PublishDeserializeOptions,
   readFixedHeader,
+  type TopicAliasResolver,
 } from "./deserialize.ts";
 
 /**
@@ -19,10 +20,12 @@ export class DeserializeStream implements Transformer<Uint8Array, AllPacket> {
    * Creates a new DeserializeStream.
    * @param options - Optional configuration
    * @param options.publishDeserializeOptions - How to deserialize PUBLISH payloads
+   * @param options.resolveTopicAlias - Callback to resolve topic aliases
    */
   constructor(
     readonly options?: {
       publishDeserializeOptions?: PublishDeserializeOptions;
+      resolveTopicAlias?: TopicAliasResolver;
     },
   ) {
   }
@@ -70,6 +73,7 @@ export class DeserializeStream implements Transformer<Uint8Array, AllPacket> {
             fixedHeader,
             reader,
             this.options?.publishDeserializeOptions,
+            this.options?.resolveTopicAlias,
           ),
         );
       } catch (e) {

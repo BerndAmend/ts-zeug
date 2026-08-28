@@ -32,6 +32,7 @@ import {
   RetainHandling,
   type SubAckPacket,
   type SubscribePacket,
+  type Topic,
   type UnsubAckPacket,
   type UnsubscribePacket,
   type UserProperty,
@@ -540,11 +541,15 @@ export function serializeConnAckPacket(
 export function serializePublishPacket(
   packet: MakeSerializePacketType<PublishPacket>,
   w: Writer,
+  overrides?: {
+    topic?: Topic;
+    topic_alias?: number;
+  },
 ): Uint8Array {
   w.beginMessage();
   const qos = packet.qos ?? QoS.At_most_once_delivery;
 
-  w.addUTF8String(packet.topic);
+  w.addUTF8String(overrides?.topic ?? packet.topic);
 
   if (packet.packet_identifier !== undefined) {
     if (qos === QoS.At_most_once_delivery) {
@@ -589,12 +594,13 @@ export function serializePublishPacket(
       }
     }
 
-    if (p?.topic_alias !== undefined) {
-      if (p.topic_alias === 0) {
+    const alias = overrides?.topic_alias ?? p?.topic_alias;
+    if (alias !== undefined) {
+      if (alias === 0) {
         throw new Error("Topic Alias must not be 0");
       }
       tw.addUint8(Property.Topic_Alias);
-      tw.addUint16(p.topic_alias);
+      tw.addUint16(alias);
     }
 
     tw.addUserProperties(p?.user_properties);

@@ -498,7 +498,7 @@ export type PublishPacket = {
   dup?: boolean; // 3.3.1.1 defaults to false
   qos?: QoS; // 3.3.1.2 defaults to QoS.At_most_once_delivery
   retain?: boolean; // 3.3.1.3 defaults to false
-  topic: Topic; // 3.3.2.1
+  topic: Topic; // 3.3.2.1 — empty string means alias-only, resolved by Client before external exposure
   /**
    * The DataReader should be preferred if the received data is later accessed with a DataReader/DataView,
    * since it allows sharing the internal DataView.

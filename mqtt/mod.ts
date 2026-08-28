@@ -24,3 +24,6 @@ export * from "./ClientSource.ts";
 
 /** MQTT client implementation. */
 export * from "./Client.ts";
+
+/** Topic alias mapper (LRU-based). */
+export * from "./TopicAliasMapper.ts";

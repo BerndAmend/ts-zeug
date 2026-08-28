@@ -101,6 +101,14 @@ export enum PublishDeserializeOptions {
 }
 
 /**
+ * Called during deserialization to resolve a topic alias to the actual topic
+ * string. Returns undefined if the alias is unknown, in which case the topic
+ * remains empty.
+ */
+export type TopicAliasResolver = (topicAlias: number) => Topic | undefined;
+
+/**
+
  * 2.1.1 Reads the MQTT fixed header from a reader.
  * @param reader - The data reader
  * @returns The parsed fixed header, or undefined if incomplete
@@ -403,6 +411,7 @@ function deserializePublishPacket(
   fixedHeader: FixedHeader,
   r: DataReader,
   options?: PublishDeserializeOptions,
+  resolveTopicAlias?: TopicAliasResolver,
 ): PublishPacket {
   const topicRaw = readUTF8String(r);
   const qos: QoS = (fixedHeader.flags >> 1) & 0b11;
@@ -420,7 +429,9 @@ function deserializePublishPacket(
 
   const ret: PublishPacket = {
     type: ControlPacketType.Publish,
-    topic: asTopic(topicRaw),
+    topic: (topicRaw !== "" || props?.topic_alias === undefined)
+      ? asTopic(topicRaw)
+      : (resolveTopicAlias?.(props.topic_alias) ?? "" as Topic),
   };
 
   if (fixedHeader.flags & 0b1000) {
@@ -803,6 +814,7 @@ export function deserializePacket(
   fixedHeader: FixedHeader,
   reader: DataReader,
   options?: PublishDeserializeOptions,
+  resolveTopicAlias?: TopicAliasResolver,
 ): AllPacket {
   const r = reader.getDataReader(fixedHeader.length);
   switch (fixedHeader.type) {
@@ -813,7 +825,12 @@ export function deserializePacket(
     case ControlPacketType.ConnAck:
       return deserializeConnAckPacket(fixedHeader, r);
     case ControlPacketType.Publish:
-      return deserializePublishPacket(fixedHeader, r, options);
+      return deserializePublishPacket(
+        fixedHeader,
+        r,
+        options,
+        resolveTopicAlias,
+      );
     case ControlPacketType.PubAck:
       return deserializePubAckPacket(fixedHeader, r);
     case ControlPacketType.PubRec:
