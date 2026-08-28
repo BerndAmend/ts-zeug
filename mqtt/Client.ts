@@ -599,7 +599,11 @@ export class Client implements AsyncDisposable {
           const p = value;
           switch (p.type) {
             case ControlPacketType.SubAck:
-            case ControlPacketType.UnsubAck: {
+            case ControlPacketType.UnsubAck:
+            case ControlPacketType.PubAck:
+            case ControlPacketType.PubRec:
+            case ControlPacketType.PubRel:
+            case ControlPacketType.PubComp: {
               const handler = this.#pendingReplies[p.packet_identifier];
               this.#pendingReplies[p.packet_identifier] = undefined;
               if (handler === undefined) {
