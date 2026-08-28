@@ -282,15 +282,15 @@ export type UserProperty = { key: string; value: string };
  * Validates and casts a string to an MQTT Topic.
  * @param input - The topic string to validate
  * @returns The validated Topic
- * @throws If the topic is empty, starts with '/', or contains wildcards
+ * @throws If the topic is empty, contains the null character, or contains wildcards
  */
 export function asTopic(input: string): Topic {
   if (input === "") {
     throw new Error(`Invalid Topic: cannot be empty`);
   }
-  if (input.startsWith("/")) {
+  if (input.includes("\u0000")) {
     throw new Error(
-      `Invalid Topic: cannot start with a '/' input '${input}'`,
+      `Invalid Topic: cannot contain the null character input '${input}'`,
     );
   }
   if (input.includes("#")) {
@@ -311,15 +311,15 @@ export function asTopic(input: string): Topic {
  * Validates and casts a string to an MQTT TopicFilter.
  * @param input - The topic filter string to validate
  * @returns The validated TopicFilter
- * @throws If the topic filter is empty, starts with '/', or has invalid wildcard usage
+ * @throws If the topic filter is empty, contains the null character, or has invalid wildcard usage
  */
 export function asTopicFilter(input: string): TopicFilter {
   if (input === "") {
     throw new Error(`Invalid TopicFilter: cannot be empty`);
   }
-  if (input.startsWith("/")) {
+  if (input.includes("\u0000")) {
     throw new Error(
-      `Invalid TopicFilter: cannot start with a '/' input '${input}'`,
+      `Invalid TopicFilter: cannot contain the null character input '${input}'`,
     );
   }
 

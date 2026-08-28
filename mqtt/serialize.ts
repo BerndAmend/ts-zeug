@@ -216,9 +216,12 @@ export class Writer extends DataWriter {
     const endPos = this.pos;
     const size = endPos - maxFixedHeaderSize;
 
-    if (size >= this.#maximumPacketSize) {
+    // maximum_packet_size is the total number of bytes in the Control Packet,
+    // including the fixed header (1 byte type/flags + remaining length bytes).
+    const totalSize = size + 1 + this.lengthVariableByteInteger(size);
+    if (totalSize > this.#maximumPacketSize) {
       throw new Error(
-        `Message size is too large: ${size} bytes, the maximum_packet_size is set to ${this.#maximumPacketSize} bytes`,
+        `Message size is too large: ${totalSize} bytes, the maximum_packet_size is set to ${this.#maximumPacketSize} bytes`,
       );
     }
 
@@ -241,7 +244,10 @@ export class Writer extends DataWriter {
    * @throws If value is out of range
    */
   set maximumPacketSize(value: number | undefined) {
-    value ??= 268_435_455; // default value
+    if (value === 0 || value === undefined) {
+      this.#maximumPacketSize = 268_435_455;
+      return;
+    }
     if (value < 0 || value > 268_435_455) {
       throw new Error(
         `Invalid maximum packet size: ${value}, must be between 0 and 268_435_455`,
@@ -286,6 +292,13 @@ export function serializeConnectPacket(
   w.beginMessage();
   w.addUTF8String(packet.protocol_name ?? "MQTT");
   w.addUint8(packet.protocol_version ?? 5);
+
+  // 3.1.2.9 If the User Name Flag is set to 0, the Password Flag MUST be set to 0.
+  if (packet.password !== undefined && packet.username === undefined) {
+    throw new Error(
+      "password can only be set if the username is set",
+    );
+  }
 
   const connectFlags = (packet.username !== undefined ? 0b1000_0000 : 0) |
     (packet.password !== undefined ? 0b0100_0000 : 0) |
@@ -442,12 +455,12 @@ export function serializeConnAckPacket(
       tw.addUint16(p.receive_maximum);
     }
 
-    if (p?.maximum_QoS) {
+    if (p?.maximum_QoS !== undefined) {
       tw.addUint8(Property.Maximum_QoS);
       tw.addUint8(p.maximum_QoS);
     }
 
-    if (p?.retain_available) {
+    if (p?.retain_available !== undefined) {
       tw.addUint8(Property.Retain_Available);
       tw.addUint8(p.retain_available ? 1 : 0);
     }
@@ -462,7 +475,7 @@ export function serializeConnAckPacket(
       tw.addUTF8String(p.assigned_client_id);
     }
 
-    if (p?.topic_alias_maximum) {
+    if (p?.topic_alias_maximum !== undefined) {
       tw.addUint8(Property.Topic_Alias_Maximum);
       tw.addUint16(p.topic_alias_maximum);
     }
@@ -486,7 +499,7 @@ export function serializeConnAckPacket(
       tw.addUint8(0);
     }
 
-    if (p?.server_keep_alive) {
+    if (p?.server_keep_alive !== undefined) {
       tw.addUint8(Property.Server_Keep_Alive);
       tw.addUint16(p.server_keep_alive);
     }
@@ -576,7 +589,10 @@ export function serializePublishPacket(
       }
     }
 
-    if (p?.topic_alias) {
+    if (p?.topic_alias !== undefined) {
+      if (p.topic_alias === 0) {
+        throw new Error("Topic Alias must not be 0");
+      }
       tw.addUint8(Property.Topic_Alias);
       tw.addUint16(p.topic_alias);
     }

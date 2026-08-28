@@ -19,6 +19,7 @@ import {
   type DisconnectPacket,
   type FixedHeader,
   type PacketIdentifier,
+  PayloadFormatIndicator,
   Property,
   type PubAckPacket,
   type PubCompPacket,
@@ -163,6 +164,11 @@ function readProperties(
     switch (id) {
       case Property.Payload_Format_Indicator:
         ret.payload_format_indicator = r.getUint8();
+        if (ret.payload_format_indicator > PayloadFormatIndicator.UTF8) {
+          throw new Error(
+            `Invalid Payload Format Indicator: ${ret.payload_format_indicator}`,
+          );
+        }
         break;
       case Property.Message_Expiry_Interval:
         ret.message_expiry_interval = r.getUint32() as Seconds;
@@ -257,9 +263,14 @@ function readProperties(
  * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901033}
  */
 function deserializeConnectPacket(
-  _fixedHeader: FixedHeader,
+  fixedHeader: FixedHeader,
   r: DataReader,
 ): ConnectPacket {
+  if (fixedHeader.flags !== 0) {
+    throw new Error(
+      `Invalid flags for Connect packet: ${fixedHeader.flags}, expected 0`,
+    );
+  }
   const ret: ConnectPacket = {
     type: ControlPacketType.Connect,
   };
@@ -281,6 +292,11 @@ function deserializeConnectPacket(
   ret.protocol_version = 5;
 
   const connectFlags = r.getUint8();
+
+  // 3.1.2.3 The reserved flag bit 0 MUST be set to 0.
+  if ((connectFlags & 0b0000_0001) !== 0) {
+    throw new Error("Invalid Connect flags: reserved bit 0 must be 0");
+  }
 
   const usernameFlag = (connectFlags & 0b1000_0000) !== 0;
   const passwordFlag = (connectFlags & 0b0100_0000) !== 0;
@@ -304,11 +320,12 @@ function deserializeConnectPacket(
 
     const topic = readUTF8String(r);
 
-    // How can we improve the payload handling?
-    let payload;
-    try {
+    // 3.1.3.4 The Will Payload is Binary Data; only decode as UTF-8 when the
+    // Will Properties explicitly mark it as UTF-8.
+    let payload: string | Uint8Array | DataReader;
+    if (willProps?.payload_format_indicator === PayloadFormatIndicator.UTF8) {
       payload = readUTF8String(r);
-    } catch {
+    } else {
       payload = readBinaryData(r);
     }
 
@@ -347,9 +364,14 @@ function deserializeConnectPacket(
  * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901074}
  */
 function deserializeConnAckPacket(
-  _fixedHeader: FixedHeader,
+  fixedHeader: FixedHeader,
   r: DataReader,
 ): ConnAckPacket {
+  if (fixedHeader.flags !== 0) {
+    throw new Error(
+      `Invalid flags for ConnAck packet: ${fixedHeader.flags}, expected 0`,
+    );
+  }
   const ret: ConnAckPacket = {
     type: ControlPacketType.ConnAck,
   };
@@ -382,9 +404,23 @@ function deserializePublishPacket(
   r: DataReader,
   options?: PublishDeserializeOptions,
 ): PublishPacket {
+  const topicRaw = readUTF8String(r);
+  const qos: QoS = (fixedHeader.flags >> 1) & 0b11;
+
+  if (qos === QoS.Reserved) {
+    throw new Error("Invalid QoS (3) in PUBLISH packet");
+  }
+
+  let packet_identifier: PacketIdentifier | undefined;
+  if (qos !== QoS.At_most_once_delivery) {
+    packet_identifier = r.getUint16() as PacketIdentifier;
+  }
+
+  const props = readProperties(r, options);
+
   const ret: PublishPacket = {
     type: ControlPacketType.Publish,
-    topic: asTopic(readUTF8String(r)),
+    topic: asTopic(topicRaw),
   };
 
   if (fixedHeader.flags & 0b1000) {
@@ -395,13 +431,11 @@ function deserializePublishPacket(
     ret.retain = true;
   }
 
-  const qos: QoS = (fixedHeader.flags >> 1) & 0b11;
   if (qos !== QoS.At_most_once_delivery) {
     ret.qos = qos;
-    ret.packet_identifier = r.getUint16() as PacketIdentifier;
+    ret.packet_identifier = packet_identifier;
   }
 
-  const props = readProperties(r, options);
   if (props !== undefined) {
     ret.properties = props;
   }
@@ -443,9 +477,14 @@ function deserializePublishPacket(
  * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901121}
  */
 function deserializePubAckPacket(
-  _fixedHeader: FixedHeader,
+  fixedHeader: FixedHeader,
   r: DataReader,
 ): PubAckPacket {
+  if (fixedHeader.flags !== 0) {
+    throw new Error(
+      `Invalid flags for PubAck packet: ${fixedHeader.flags}, expected 0`,
+    );
+  }
   const ret: PubAckPacket = {
     type: ControlPacketType.PubAck,
     packet_identifier: r.getUint16() as PacketIdentifier,
@@ -465,9 +504,14 @@ function deserializePubAckPacket(
  * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc384800421}
  */
 function deserializePubRecPacket(
-  _fixedHeader: FixedHeader,
+  fixedHeader: FixedHeader,
   r: DataReader,
 ): PubRecPacket {
+  if (fixedHeader.flags !== 0) {
+    throw new Error(
+      `Invalid flags for PubRec packet: ${fixedHeader.flags}, expected 0`,
+    );
+  }
   const ret: PubRecPacket = {
     type: ControlPacketType.PubRec,
     packet_identifier: r.getUint16() as PacketIdentifier,
@@ -514,9 +558,14 @@ function deserializePubRelPacket(
  * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc511988628}
  */
 function deserializePubCompPacket(
-  _fixedHeader: FixedHeader,
+  fixedHeader: FixedHeader,
   r: DataReader,
 ): PubCompPacket {
+  if (fixedHeader.flags !== 0) {
+    throw new Error(
+      `Invalid flags for PubComp packet: ${fixedHeader.flags}, expected 0`,
+    );
+  }
   const ret: PubCompPacket = {
     type: ControlPacketType.PubComp,
     packet_identifier: r.getUint16() as PacketIdentifier,
@@ -629,9 +678,14 @@ function deserializeSubAckPacket(
  * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901179}
  */
 function deserializeUnsubscribePacket(
-  _fixedHeader: FixedHeader,
+  fixedHeader: FixedHeader,
   r: DataReader,
 ): UnsubscribePacket {
+  if (fixedHeader.flags !== 0b0010) {
+    throw new Error(
+      `Invalid flags for Unsubscribe packet: ${fixedHeader.flags}, expected 0b0010`,
+    );
+  }
   const ret: UnsubscribePacket = {
     type: ControlPacketType.Unsubscribe,
     packet_identifier: r.getUint16() as PacketIdentifier,
@@ -681,9 +735,14 @@ function deserializeUnsubAckPacket(
  * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901205}
  */
 export function deserializeDisconnectPacket(
-  _fixedHeader: FixedHeader,
+  fixedHeader: FixedHeader,
   r: DataReader,
 ): DisconnectPacket {
+  if (fixedHeader.flags !== 0) {
+    throw new Error(
+      `Invalid flags for Disconnect packet: ${fixedHeader.flags}, expected 0`,
+    );
+  }
   const ret: DisconnectPacket = {
     type: ControlPacketType.Disconnect,
   };
@@ -707,9 +766,14 @@ export function deserializeDisconnectPacket(
  * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901217}
  */
 export function deserializeAuthPacket(
-  _fixedHeader: FixedHeader,
+  fixedHeader: FixedHeader,
   r: DataReader,
 ): AuthPacket {
+  if (fixedHeader.flags !== 0) {
+    throw new Error(
+      `Invalid flags for Auth packet: ${fixedHeader.flags}, expected 0`,
+    );
+  }
   const ret: AuthPacket = {
     type: ControlPacketType.Auth,
   };
@@ -768,6 +832,13 @@ export function deserializePacket(
       return deserializeUnsubAckPacket(fixedHeader, r);
     case ControlPacketType.PingResp:
     case ControlPacketType.PingReq:
+      if (fixedHeader.flags !== 0) {
+        throw new Error(
+          `Invalid flags for ${
+            ControlPacketType[fixedHeader.type]
+          } packet: ${fixedHeader.flags}, expected 0`,
+        );
+      }
       return { type: fixedHeader.type };
     case ControlPacketType.Disconnect:
       return deserializeDisconnectPacket(fixedHeader, r);
