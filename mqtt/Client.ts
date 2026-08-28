@@ -19,6 +19,7 @@ import {
   type Milliseconds,
   type PacketIdentifier,
   type PublishPacket,
+  QoS,
   type Seconds,
   type SubAckPacket,
   type SubscribePacket,
@@ -674,6 +675,15 @@ export class Client implements AsyncDisposable {
   ) {
     if (this.#writable === undefined) {
       throw new Error("not connected");
+    }
+
+    const qosLevel = packet.qos ?? QoS.At_most_once_delivery;
+    if (
+      qosLevel !== QoS.At_most_once_delivery &&
+      packet.packet_identifier === undefined
+    ) {
+      const [pid] = this.#getPacketIdentifierHandler();
+      packet = { ...packet, packet_identifier: pid };
     }
 
     const overrides = this.#preparePublishAlias(packet);
