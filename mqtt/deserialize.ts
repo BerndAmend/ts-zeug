@@ -219,7 +219,7 @@ function readProperties(
         ret.request_response_information = r.getUint8() === 1;
         break;
       case Property.Response_Information:
-        ret.response_information = asTopic(readUTF8String(r));
+        ret.response_information = readUTF8String(r);
         break;
       case Property.Server_Reference:
         ret.server_reference = readUTF8String(r);

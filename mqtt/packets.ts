@@ -402,7 +402,7 @@ export type AllProperties = Partial<{
   request_problem_information: boolean; // 3.1.2.11.7
   will_delay_interval: Seconds; // 3.1.3.2.2
   request_response_information: boolean; // 3.1.2.11.6
-  response_information: Topic; // 3.2.2.3.15
+  response_information: string; // 3.2.2.3.15
   server_reference: string; // 3.2.2.3.16
   reason_string: string; // 3.2.2.3.9
   receive_maximum: number; // 3.1.2.11.3
@@ -482,7 +482,7 @@ export type ConnAckPacket = {
     subscription_identifiers_available?: boolean; // 3.2.2.3.12 - undefined === true
     shared_subscription_available?: boolean; // 3.2.2.3.13 - undefined === true
     server_keep_alive?: Seconds; // 3.2.2.3.14 - defaults to the value send by the client before
-    response_information?: Topic; // 3.2.2.3.15
+    response_information?: string; // 3.2.2.3.15
     server_reference?: string; // 3.2.2.3.16
     authentication_method?: string; // 3.2.2.3.17
     authentication_data?: DataReader | Uint8Array; // 3.2.2.3.18
