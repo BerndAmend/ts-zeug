@@ -45,6 +45,11 @@ export class ClientSource
   start(
     controller: ReadableStreamController<AllPacket | CustomPackets>,
   ) {
+    if ("byobRequest" in controller) {
+      throw new TypeError(
+        "ClientSource does not support ReadableByteStreamController",
+      );
+    }
     this.#controller = controller;
     this.#closed = false;
   }
