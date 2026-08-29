@@ -35,14 +35,16 @@ export type CustomPackets = {
  */
 export class ClientSource
   implements UnderlyingSource<AllPacket | CustomPackets> {
-  #controller?: ReadableStreamDefaultController;
+  #controller?: ReadableStreamDefaultController<AllPacket | CustomPackets>;
   #closed = false;
 
   /**
    * Called when the stream starts. Stores the controller reference.
    * @param controller - The stream controller
    */
-  start(controller: ReadableStreamDefaultController) {
+  start(
+    controller: ReadableStreamController<AllPacket | CustomPackets>,
+  ) {
     this.#controller = controller;
     this.#closed = false;
   }
