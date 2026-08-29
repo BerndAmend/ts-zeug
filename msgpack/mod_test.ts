@@ -1,9 +1,9 @@
 /**
  * Copyright 2023-2026 Bernd Amend. MIT license.
  */
-import { assertEquals } from "@std/assert";
-import { deserialize, Serializer } from "./mod.ts";
-import { toHexString } from "../helper/mod.ts";
+import { assertEquals, assertThrows } from "@std/assert";
+import { deserialize, serialize, Serializer } from "./mod.ts";
+import { DataReader, toHexString } from "../helper/mod.ts";
 
 Deno.test(function serializeTest() {
   const s = new Serializer();
@@ -175,4 +175,110 @@ Deno.test(function serializeTest() {
     },
     "84a130ce499602d2a13182a13082a13082a139d9266869686968696869686968696869686968696869686968696869686968696869686968696869a23130c40a01020304050607080900a3626c61be313233343536373839303132333435363738393031323334353637383930a46e65696ebe313233343536373839303132333435363738393031323334353637383930a4c3a4c39fc4140102030405060708090001020304050607080900a9736f6d657468696e67be313233343536373839303132333435363738393031323334353637383930",
   );
+});
+
+Deno.test("msgpack: typed arrays, Set, Map and DataView roundtrip", () => {
+  const cases: [unknown, unknown][] = [
+    [new Int16Array([1, -2, 3]), [1, -2, 3]],
+    [new Uint16Array([1, 2, 3]), [1, 2, 3]],
+    [new Int32Array([1, -2, 3]), [1, -2, 3]],
+    [new Uint32Array([1, 2, 3]), [1, 2, 3]],
+    [new Float32Array([1.5, -2.5]), [1.5, -2.5]],
+    [new Float64Array([1.5, -2.5]), [1.5, -2.5]],
+    [new BigInt64Array([1n, -2n]), [1, -2]],
+    [new BigUint64Array([1n, 2n]), [1, 2]],
+    [new Set([1, "a"]), [1, "a"]],
+    [new Map([["k", 1], ["x", 2]]), { k: 1, x: 2 }],
+    [new DataView(new Uint8Array([1, 2, 3]).buffer), new Uint8Array([1, 2, 3])],
+  ];
+  for (const [input, expected] of cases) {
+    assertEquals(deserialize(serialize(input)), expected);
+  }
+});
+
+Deno.test("msgpack: serializeNumbersAsFloats uses float32", () => {
+  const s = new Serializer();
+  s.add(1.5, {
+    transferTypedArraysAsBinary: false,
+    serializeNumbersAsFloats: true,
+  });
+  assertEquals(deserialize(s.getBufferView()), 1.5);
+  s.reset();
+  s.add(1.5);
+  assertEquals(deserialize(s.getBufferView()), 1.5);
+});
+
+Deno.test("msgpack: symbol and function throw", () => {
+  assertThrows(() => serialize(Symbol("x")));
+  assertThrows(() => serialize(() => {}));
+});
+
+Deno.test("msgpack: addExt rejects out-of-range type", () => {
+  const s = new Serializer();
+  assertThrows(() => s.addExt(128, new Uint8Array([1])));
+  assertThrows(() => s.addExt(-129, new Uint8Array([1])));
+});
+
+Deno.test("msgpack: extension types roundtrip via handler", () => {
+  const handler = (_type: number, data: DataReader) =>
+    data.getUint8Array(data.remainingSize);
+
+  // ext_8 (non-fixext length)
+  let s = new Serializer();
+  s.addExt(5, new Uint8Array([1, 2, 3]));
+  assertEquals(
+    deserialize(s.getBufferView(), handler),
+    new Uint8Array([1, 2, 3]),
+  );
+
+  // fixext sizes 1/2/4/8/16
+  for (const len of [1, 2, 4, 8, 16]) {
+    s = new Serializer();
+    const data = new Uint8Array(len).fill(0x7e);
+    s.addExt(7, data);
+    assertEquals(deserialize(s.getBufferView(), handler), data);
+  }
+});
+
+Deno.test("msgpack: unknown extension without handler throws", () => {
+  const s = new Serializer();
+  s.addExt(42, new Uint8Array([1]));
+  assertThrows(() => deserialize(s.getBufferView()));
+});
+
+Deno.test("msgpack: Date timestamp 32 and 96 roundtrip", () => {
+  // timestamp 32: whole seconds within 32-bit range
+  const d32 = new Date(12345 * 1000);
+  assertEquals(deserialize(serialize(d32)), d32);
+
+  // timestamp 96: dates before the epoch (negative seconds)
+  const d96 = new Date(-12345 * 1000);
+  assertEquals(deserialize(serialize(d96)), d96);
+});
+
+Deno.test("msgpack: str_16 and bin_16 boundaries", () => {
+  const str256 = "a".repeat(256);
+  assertEquals(deserialize(serialize(str256)), str256);
+
+  const bin256 = new Uint8Array(256).fill(0xab);
+  assertEquals(deserialize(serialize(bin256)), bin256);
+});
+
+Deno.test("msgpack: map_16 and array_16 headers", () => {
+  const obj: Record<string, number> = {};
+  for (let i = 0; i < 16; i++) obj[`k${i}`] = i;
+  assertEquals(deserialize(serialize(obj)), obj);
+
+  const arr = Array.from({ length: 16 }, (_, i) => i);
+  assertEquals(deserialize(serialize(arr)), arr);
+});
+
+Deno.test("msgpack: map key must be string or number", () => {
+  // fixmap(1) with a nil key
+  const r = new DataReader(new Uint8Array([0x81, 0xc0, 0x00]));
+  assertThrows(() => deserialize(r));
+});
+
+Deno.test("msgpack: never_used (0xc1) decodes to undefined", () => {
+  assertEquals(deserialize(new Uint8Array([0xc1])), undefined);
 });
