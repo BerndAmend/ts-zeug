@@ -33,5 +33,9 @@
         "single-var-declarator"
       ]
     }
+  },
+  "test": {
+    "sanitizeOps": true,
+    "sanitizeResources": true
   }
 }
