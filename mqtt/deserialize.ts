@@ -427,6 +427,11 @@ function deserializePublishPacket(
 
   const props = readProperties(r, options);
 
+  // 3.3.2.3.4 A Topic Alias of 0 is a Protocol Error.
+  if (props?.topic_alias === 0) {
+    throw new Error("Invalid Topic Alias: must not be 0");
+  }
+
   const ret: PublishPacket = {
     type: ControlPacketType.Publish,
     topic: (topicRaw !== "" || props?.topic_alias === undefined)
