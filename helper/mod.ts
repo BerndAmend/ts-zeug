@@ -7,6 +7,8 @@
  */
 export { abortable, deadline, delay } from "@std/async";
 
+export * from "./websocket.ts";
+
 /**
  * Represents a buffer-like type that can be used for binary data operations.
  * Includes typed arrays, array buffers, and array-like objects.

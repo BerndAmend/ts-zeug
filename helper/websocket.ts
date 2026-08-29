@@ -21,8 +21,17 @@ export class WebSocketSource {
     this._ws = ws;
   }
 
-  start(controller: ReadableStreamDefaultController) {
-    this._ws.onmessage = (event) => controller.enqueue(event.data);
+  start(
+    controller: ReadableStreamDefaultController<
+      string | Uint8Array<ArrayBuffer>
+    >,
+  ) {
+    this._ws.onmessage = (event) =>
+      controller.enqueue(
+        event.data instanceof ArrayBuffer
+          ? new Uint8Array(event.data)
+          : event.data,
+      );
     const onClose = () => controller.close();
     this._ws.addEventListener("close", onClose, {
       once: true,
