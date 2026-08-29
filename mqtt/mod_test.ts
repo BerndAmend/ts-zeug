@@ -582,13 +582,27 @@ Deno.test("deserialize: reject PUBLISH with QoS 3", () => {
   assertThrows(() => m.deserializePacket(h, r), Error, "QoS");
 });
 
-Deno.test("deserialize: reject invalid payload format indicator", () => {
-  // PUBLISH, topic "a", properties: Payload Format Indicator (0x01) = 2
+Deno.test("deserialize: reject PUBLISH with Topic Alias 0", () => {
+  // PUBLISH, topic "a", properties: Topic Alias (0x23) = 0
   const r = new DataReader(
-    new Uint8Array([0x30, 0x06, 0x00, 0x01, 0x61, 0x02, 0x01, 0x02]),
+    new Uint8Array([0x30, 0x07, 0x00, 0x01, 0x61, 0x03, 0x23, 0x00, 0x00]),
   );
   const h = m.readFixedHeader(r)!;
-  assertThrows(() => m.deserializePacket(h, r), Error, "Payload Format");
+  assertThrows(() => m.deserializePacket(h, r), Error, "Topic Alias");
+});
+
+Deno.test("deserialize: reject unknown property identifier", () => {
+  // PUBLISH, topic "a", properties: one unknown property (id 0x2F).
+  // 0x30 PUBLISH qos0 | 0x05 remaining | 0x0001 "a" | 0x01 props len | 0x2F
+  const r = new DataReader(
+    new Uint8Array([0x30, 0x05, 0x00, 0x01, 0x61, 0x01, 0x2f]),
+  );
+  const h = m.readFixedHeader(r)!;
+  assertThrows(
+    () => m.deserializePacket(h, r),
+    Error,
+    "Unknown property identifier",
+  );
 });
 
 Deno.test("deserialize: reject reserved packet type", () => {
