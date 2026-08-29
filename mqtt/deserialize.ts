@@ -147,6 +147,7 @@ function readBinaryData(
 
 /**
  * Reads the properties from a reader.
+ * https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc464547805
  * @param reader - The data reader
  * @returns The parsed properties, or undefined if no properties are present
  */
@@ -261,6 +262,13 @@ function readProperties(
       case Property.Shared_Subscription_Available:
         ret.shared_subscription_available = r.getUint8() !== 0;
         break;
+      default:
+        // MQTT 5.0 properties carry no encoding discriminator: the value format
+        // is implicit in the identifier, so an unknown identifier cannot be safely
+        // skipped (its value length is unknown). Reject it as a protocol error.
+        throw new Error(
+          `Unknown property identifier: 0x${(id as number).toString(16)}`,
+        );
     }
   }
   return ret;
