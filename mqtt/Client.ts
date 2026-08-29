@@ -5,7 +5,7 @@
  * @license MIT
  * @copyright 2023-2026 Bernd Amend
  */
-import { deadline, delay } from "../helper/mod.ts";
+import { connectTcp, connectTls, deadline, delay } from "../helper/mod.ts";
 import { streamifyWebSocket } from "../helper/websocket.ts";
 import {
   type AllPacket,
@@ -174,32 +174,42 @@ export async function connectLowLevel(
       writable: conn.writable,
     };
   }
-  if (
-    typeof Deno !== "undefined" &&
-    (address.protocol === "tcp:" || address.protocol === "mqtt:")
-  ) {
-    const conn = await Deno.connect({
-      hostname: address.hostname,
-      port: address.port === "" ? 1883 : Number.parseInt(address.port),
-      transport: "tcp",
-    });
+  if (address.protocol === "tcp:" || address.protocol === "mqtt:") {
+    const port = address.port === "" ? 1883 : Number.parseInt(address.port);
+    if (typeof Deno !== "undefined") {
+      const conn = await Deno.connect({
+        hostname: address.hostname,
+        port,
+        transport: "tcp",
+      });
 
-    conn.setNoDelay(true);
+      conn.setNoDelay(true);
 
+      return {
+        readable: conn.readable.pipeThrough(ts),
+        writable: conn.writable,
+      };
+    }
+    const conn = await connectTcp(address.hostname, port);
     return {
       readable: conn.readable.pipeThrough(ts),
       writable: conn.writable,
     };
   }
-  if (
-    typeof Deno !== "undefined" &&
-    (address.protocol === "tls:" || address.protocol === "mqtts:")
-  ) {
-    const conn = await Deno.connectTls({
-      hostname: address.hostname,
-      port: address.port === "" ? 8883 : Number.parseInt(address.port),
-    });
+  if (address.protocol === "tls:" || address.protocol === "mqtts:") {
+    const port = address.port === "" ? 8883 : Number.parseInt(address.port);
+    if (typeof Deno !== "undefined") {
+      const conn = await Deno.connectTls({
+        hostname: address.hostname,
+        port,
+      });
 
+      return {
+        readable: conn.readable.pipeThrough(ts),
+        writable: conn.writable,
+      };
+    }
+    const conn = await connectTls(address.hostname, port);
     return {
       readable: conn.readable.pipeThrough(ts),
       writable: conn.writable,

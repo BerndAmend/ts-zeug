@@ -7,6 +7,7 @@
  */
 export { abortable, deadline, delay } from "@std/async";
 
+export * from "./socket.ts";
 export * from "./websocket.ts";
 
 /**
