@@ -1,6 +1,6 @@
 {
   "name": "@bernd/ts-zeug",
-  "version": "1.5.8",
+  "version": "1.5.9",
   "license": "MIT",
   "exports": "./mod.ts",
   "tasks": {
