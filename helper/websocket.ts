@@ -84,7 +84,7 @@ export class WebSocketSink {
     });
   }
 
-  write(chunk: string | ArrayBufferLike | Blob | ArrayBufferView) {
+  write(chunk: Parameters<WebSocket["send"]>[0]) {
     this._ws.send(chunk);
   }
 
