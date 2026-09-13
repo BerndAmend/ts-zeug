@@ -17,6 +17,13 @@ const broker = process.env.TS_ZEUG_BROKER;
 
 const lib = await import(bundleUrl);
 
+const runtimeName = process.versions?.bun
+  ? "bun"
+  : process.versions?.deno
+  ? "deno"
+  : "node";
+console.log(`runtime=${runtimeName} version=${process.version}`);
+
 function fail(message) {
   console.error(`FAIL: ${message}`);
   process.exit(1);

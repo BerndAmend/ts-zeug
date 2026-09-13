@@ -20,34 +20,36 @@ const smokePath = new URL("./bun_node_test_helper.mjs", import.meta.url)
 
 type Runtime = { name: string; command: string; args: string[] };
 
-/** Synchronously checks whether a runtime can be spawned. */
-function isRuntimeAvailable(command: string, args: string[]): boolean {
+/** Returns the runtime version, or undefined when it cannot be spawned. */
+function runtimeVersion(command: string, args: string[]): string | undefined {
   try {
-    return new Deno.Command(command, {
+    const { success, stdout } = new Deno.Command(command, {
       args: [...args, "--version"],
-      stdout: "null",
+      stdout: "piped",
       stderr: "null",
-    }).outputSync().success;
+    }).outputSync();
+    if (!success) return undefined;
+    return new TextDecoder().decode(stdout).split("\n")[0]!.trim();
   } catch {
-    return false;
+    return undefined;
   }
 }
 
 /** Whether subprocesses can be spawned (requires --allow-run). */
-const canSpawn = isRuntimeAvailable("deno", []);
+const canSpawn = runtimeVersion("deno", []) !== undefined;
 
-const runtimes: { runtime: Runtime; available: boolean }[] = [
+const runtimes: { runtime: Runtime; version: string | undefined }[] = [
   {
     runtime: { name: "deno", command: "deno", args: ["run", "-A"] },
-    available: canSpawn,
+    version: runtimeVersion("deno", []),
   },
   {
     runtime: { name: "node", command: "node", args: [] },
-    available: isRuntimeAvailable("node", []),
+    version: runtimeVersion("node", []),
   },
   {
     runtime: { name: "bun", command: "bun", args: [] },
-    available: isRuntimeAvailable("bun", []),
+    version: runtimeVersion("bun", []),
   },
 ];
 
@@ -131,11 +133,18 @@ Deno.test({
         },
       ];
 
-      for (const { runtime, available } of runtimes) {
+      const summary = runtimes
+        .map(({ runtime, version }) =>
+          version ? `${runtime.name}=${version}` : `${runtime.name}=skipped`
+        )
+        .join(", ");
+      console.log(`cross-runtime runtimes: ${summary}`);
+
+      for (const { runtime, version } of runtimes) {
         for (const transport of transports) {
           await t.step({
             name: `${runtime.name}/${transport.name}`,
-            ignore: !available,
+            ignore: version === undefined,
             fn: async () => {
               const result = await runSmoke(
                 runtime,
@@ -145,6 +154,11 @@ Deno.test({
               assert(
                 result.ok,
                 `${runtime.name}/${transport.name}:\n${result.output}`,
+              );
+              // The helper reports which runtime actually executed the bundle.
+              assert(
+                result.output.includes(`runtime=${runtime.name} version=`),
+                `expected the ${runtime.name} runtime to run the bundle:\n${result.output}`,
               );
             },
           });
