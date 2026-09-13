@@ -1,42 +1,55 @@
 /**
- * Cross-runtime test harness.
+ * Cross-runtime integration test.
  *
- * Bundles the library and runs a smoke test (see bun_node_test_helper.mjs) under every
- * available JavaScript runtime (Deno, Node, Bun) and, for the WebSocket
- * transport, against the browser bundle.
+ * Bundles the library and runs a smoke test (see bun_node_test_helper.mjs)
+ * under every available JavaScript runtime (Deno, Node, Bun). The WebSocket
+ * transport additionally runs against the browser bundle in a runtime without
+ * Deno APIs, which exercises the browser code path.
  *
- * Usage:
- *   deno task test:runtimes
- *   deno run -A bun_node_test.ts
- *
- * Runtimes that are not installed are skipped.
+ * Runtimes that are not installed (or not permitted) are reported as ignored
+ * steps, so the test can run with `deno test`. It needs run/read/write/env/net
+ * permissions like the rest of the integration tests (use `deno test -A`).
  */
 
+import { assert } from "@std/assert";
 import { Server } from "./mqtt/Server.ts";
 
-const repoRoot = new URL("./", import.meta.url);
-const entrypoint = new URL("mod.ts", repoRoot);
-const smokePath =
-  new URL("./bun_node_test_helper.mjs", import.meta.url).pathname;
+const entrypoint = new URL("mod.ts", import.meta.url);
+const smokePath = new URL("./bun_node_test_helper.mjs", import.meta.url)
+  .pathname;
 
 type Runtime = { name: string; command: string; args: string[] };
 
-async function findRuntime(
-  name: string,
-  command: string,
-  args: string[],
-): Promise<Runtime | undefined> {
+/** Synchronously checks whether a runtime can be spawned. */
+function isRuntimeAvailable(command: string, args: string[]): boolean {
   try {
-    const status = await new Deno.Command(command, {
+    return new Deno.Command(command, {
       args: [...args, "--version"],
       stdout: "null",
       stderr: "null",
-    }).output();
-    return status.success ? { name, command, args } : undefined;
+    }).outputSync().success;
   } catch {
-    return undefined;
+    return false;
   }
 }
+
+/** Whether subprocesses can be spawned (requires --allow-run). */
+const canSpawn = isRuntimeAvailable("deno", []);
+
+const runtimes: { runtime: Runtime; available: boolean }[] = [
+  {
+    runtime: { name: "deno", command: "deno", args: ["run", "-A"] },
+    available: canSpawn,
+  },
+  {
+    runtime: { name: "node", command: "node", args: [] },
+    available: isRuntimeAvailable("node", []),
+  },
+  {
+    runtime: { name: "bun", command: "bun", args: [] },
+    available: isRuntimeAvailable("bun", []),
+  },
+];
 
 async function bundle(platform: "deno" | "browser", out: string) {
   const status = await new Deno.Command("deno", {
@@ -81,77 +94,65 @@ async function runSmoke(
   return { ok: code === 0 && output.includes("OK"), output };
 }
 
-const runtimes = (
-  await Promise.all([
-    findRuntime("deno", "deno", ["run", "-A"]),
-    findRuntime("node", "node", []),
-    findRuntime("bun", "bun", []),
-  ])
-).filter((r): r is Runtime => r !== undefined);
+Deno.test({
+  name: "cross-runtime: deno, node and bun",
+  ignore: !canSpawn,
+  async fn(t) {
+    const tempDir = await Deno.makeTempDir({ prefix: "ts-zeug-runtime-" });
+    const server = new Server(["mqtt://127.0.0.1:0", "ws://127.0.0.1:0"]);
+    server.listen();
+    const mqttPort = server.ports[0]!;
+    const wsPort = server.ports[1]!;
 
-if (runtimes.length === 0) {
-  console.error("No JavaScript runtime found");
-  Deno.exit(1);
-}
+    try {
+      const denoBundle = await bundle("deno", `${tempDir}/deno.mjs`);
+      const browserBundle = await bundle("browser", `${tempDir}/browser.mjs`);
 
-const tempDir = await Deno.makeTempDir({ prefix: "ts-zeug-runtime-" });
-let failures = 0;
+      await t.step("browser bundle has no static node: imports", async () => {
+        const source = await Deno.readTextFile(`${tempDir}/browser.mjs`);
+        assert(
+          !/^\s*import[^\n]*from\s*"node:/m.test(source),
+          "the browser bundle must not statically import Node built-ins",
+        );
+      });
 
-const server = new Server([
-  "mqtt://127.0.0.1:0",
-  "ws://127.0.0.1:0",
-]);
-server.listen();
-const mqttPort = server.ports[0]!;
-const wsPort = server.ports[1]!;
+      const transports = [
+        {
+          name: "tcp",
+          bundle: denoBundle,
+          broker: `mqtt://127.0.0.1:${mqttPort}`,
+        },
+        {
+          // The browser bundle is imported by a runtime without Deno APIs,
+          // which exercises the WebSocket code path used in browsers.
+          name: "ws",
+          bundle: browserBundle,
+          broker: `ws://127.0.0.1:${wsPort}`,
+        },
+      ];
 
-try {
-  const denoBundle = await bundle("deno", `${tempDir}/deno.mjs`);
-  const browserBundle = await bundle("browser", `${tempDir}/browser.mjs`);
-
-  // The browser bundle must not statically import Node built-ins.
-  const browserSource = await Deno.readTextFile(`${tempDir}/browser.mjs`);
-  if (/^\s*import[^\n]*from\s*"node:/m.test(browserSource)) {
-    console.error("browser bundle contains a static node: import");
-    failures++;
-  }
-
-  const transports = [
-    { name: "tcp", bundle: denoBundle, broker: `mqtt://127.0.0.1:${mqttPort}` },
-    // The browser bundle is imported by a runtime without Deno APIs, which
-    // exercises the WebSocket code path used in browsers.
-    {
-      name: "ws",
-      bundle: browserBundle,
-      broker: `ws://127.0.0.1:${wsPort}`,
-    },
-  ];
-
-  for (const runtime of runtimes) {
-    for (const transport of transports) {
-      const label = `${runtime.name}/${transport.name}`;
-      const result = await runSmoke(
-        runtime,
-        transport.bundle,
-        transport.broker,
-      );
-      if (result.ok) {
-        console.log(`ok   ${label}`);
-      } else {
-        failures++;
-        console.error(`FAIL ${label}\n${result.output}`);
+      for (const { runtime, available } of runtimes) {
+        for (const transport of transports) {
+          await t.step({
+            name: `${runtime.name}/${transport.name}`,
+            ignore: !available,
+            fn: async () => {
+              const result = await runSmoke(
+                runtime,
+                transport.bundle,
+                transport.broker,
+              );
+              assert(
+                result.ok,
+                `${runtime.name}/${transport.name}:\n${result.output}`,
+              );
+            },
+          });
+        }
       }
+    } finally {
+      await server[Symbol.asyncDispose]();
+      await Deno.remove(tempDir, { recursive: true });
     }
-  }
-} finally {
-  await server[Symbol.asyncDispose]();
-  await Deno.remove(tempDir, { recursive: true });
-}
-
-if (failures > 0) {
-  console.error(`\n${failures} runtime test(s) failed`);
-  Deno.exit(1);
-}
-console.log(
-  `\nAll runtime tests passed (${runtimes.map((r) => r.name).join(", ")})`,
-);
+  },
+});

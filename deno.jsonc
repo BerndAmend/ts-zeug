@@ -8,8 +8,7 @@
   },
   "tasks": {
     "dev": "deno run --watch mqtt-client.ts",
-    "eslint": "deno run -A jsr:@sigmasd/deno-eslint",
-    "test:runtimes": "deno run -A bun_node_test.ts"
+    "eslint": "deno run -A jsr:@sigmasd/deno-eslint"
   },
   "imports": {
     "@bernd/ts-zeug": "./mod.ts",
@@ -40,9 +39,6 @@
     }
   },
   "test": {
-    "exclude": [
-      "bun_node_test.ts"
-    ],
     "sanitizeOps": true,
     "sanitizeResources": true
   }
