@@ -2,7 +2,10 @@
   "name": "@bernd/ts-zeug",
   "version": "1.5.9",
   "license": "MIT",
-  "exports": "./mod.ts",
+  "exports": {
+    ".": "./mod.ts",
+    "./mqtt/server": "./mqtt/Server.ts"
+  },
   "tasks": {
     "dev": "deno run --watch mqtt-client.ts",
     "eslint": "deno run -A jsr:@sigmasd/deno-eslint"
