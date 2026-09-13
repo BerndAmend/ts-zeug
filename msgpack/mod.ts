@@ -601,7 +601,18 @@ export function deserialize(
           throw new Error(`map key must be string or number, got ${typeof k}`);
         }
         const v = next();
-        r[k] = v;
+        if (k === "__proto__") {
+          // Assigning to `__proto__` would mutate the prototype instead of
+          // storing an own property (prototype pollution on untrusted input).
+          Object.defineProperty(r, k, {
+            value: v,
+            enumerable: true,
+            writable: true,
+            configurable: true,
+          });
+        } else {
+          r[k] = v;
+        }
       }
       return r;
     };
