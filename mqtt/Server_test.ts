@@ -26,7 +26,6 @@ import {
   asClientID,
   asTopic,
   asTopicFilter,
-  AuthHandler,
   Client,
   ConnAckPacket,
   ConnectPacket,
@@ -36,11 +35,10 @@ import {
   PublishPacket,
   QoS,
   RetainHandling,
-  Server,
-  type ServerOptions,
   SubAckReasonCode,
   TopicAliasMapper,
 } from "./mod.ts";
+import { type AuthHandler, Server, type ServerOptions } from "./Server.ts";
 import { Mosquitto } from "./Mosquitto.ts";
 import type { OmitPacketType } from "./serialize.ts";
 import type { AllPacket, Seconds } from "./packets.ts";

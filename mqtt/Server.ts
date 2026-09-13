@@ -1,5 +1,6 @@
 /**
  * MQTT 5.0 broker implementation built on top of the existing packet layer.
+ * Don't use this in production; it is a reference implementation for testing.
  *
  * Features:
  *   • TCP (mqtt://) and TLS (mqtts://) listeners
