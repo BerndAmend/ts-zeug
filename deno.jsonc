@@ -40,6 +40,9 @@
     }
   },
   "test": {
+    "exclude": [
+      "bun_node_test.ts"
+    ],
     "sanitizeOps": true,
     "sanitizeResources": true
   }
