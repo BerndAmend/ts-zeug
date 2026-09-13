@@ -30,9 +30,12 @@ Deno.test("connectTcp: round-trips data through an echo server", async () => {
   writer.releaseLock();
   reader.releaseLock();
   await readable.cancel();
-  await new Promise<void>((resolve, reject) =>
-    server.close((e) => e ? reject(e) : resolve())
-  );
+  await new Promise<void>((resolve, reject) => {
+    server.close((e) => {
+      if (e) reject(e instanceof Error ? e : new Error(String(e)));
+      else resolve();
+    });
+  });
 });
 
 Deno.test("connectTls: connection refused rejects", async () => {

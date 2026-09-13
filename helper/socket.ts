@@ -7,8 +7,10 @@
  * @copyright 2026 Bernd Amend
  */
 
-import net from "node:net";
-import tls from "node:tls";
+// Type-only imports are erased at runtime, so importing this module never
+// pulls in the Node.js built-ins (important for browser bundles).
+import type { Socket } from "node:net";
+import type { TLSSocket } from "node:tls";
 
 export type NodeLowLevelConnection = {
   readable: ReadableStream<Uint8Array>;
@@ -21,10 +23,11 @@ export type NodeLowLevelConnection = {
  * @param port - The destination port
  * @returns A promise resolving to a WebStream-wrapped socket
  */
-export function connectTcp(
+export async function connectTcp(
   hostname: string,
   port: number,
 ): Promise<NodeLowLevelConnection> {
+  const { default: net } = await import("node:net");
   const { promise, resolve, reject } = Promise.withResolvers<
     NodeLowLevelConnection
   >();
@@ -41,10 +44,11 @@ export function connectTcp(
  * @param port - The destination port
  * @returns A promise resolving to a WebStream-wrapped socket
  */
-export function connectTls(
+export async function connectTls(
   hostname: string,
   port: number,
 ): Promise<NodeLowLevelConnection> {
+  const { default: tls } = await import("node:tls");
   const { promise, resolve, reject } = Promise.withResolvers<
     NodeLowLevelConnection
   >();
@@ -61,7 +65,7 @@ export function connectTls(
  * @returns An object containing the wrapped streams
  */
 function wrapSocket(
-  socket: net.Socket | tls.TLSSocket,
+  socket: Socket | TLSSocket,
 ): NodeLowLevelConnection {
   const readable = new ReadableStream({
     start(controller) {
