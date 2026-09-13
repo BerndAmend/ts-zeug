@@ -1,7 +1,7 @@
 /**
  * Copyright 2023-2026 Bernd Amend. MIT license.
  */
-import { assert, assertEquals, assertThrows } from "@std/assert";
+import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { DataReader } from "../helper/mod.ts";
 import * as m from "./mod.ts";
 
@@ -609,6 +609,203 @@ Deno.test("deserialize: reject reserved packet type", () => {
   const r = new DataReader(new Uint8Array([0x00, 0x00]));
   const h = m.readFixedHeader(r)!;
   assertThrows(() => m.deserializePacket(h, r));
+});
+
+Deno.test("deserialize: reject SubAck with non-zero flags", () => {
+  // SUBACK (type 9) with all fixed-header flag bits set.
+  const r = new DataReader(new Uint8Array([0x9f, 0x03, 0x00, 0x01, 0x00]));
+  const h = m.readFixedHeader(r)!;
+  assertThrows(() => m.deserializePacket(h, r), Error, "flags");
+});
+
+Deno.test("deserialize: reject UnsubAck with non-zero flags", () => {
+  // UNSUBACK (type 11) with all fixed-header flag bits set.
+  const r = new DataReader(new Uint8Array([0xbf, 0x03, 0x00, 0x01, 0x00]));
+  const h = m.readFixedHeader(r)!;
+  assertThrows(() => m.deserializePacket(h, r), Error, "flags");
+});
+
+Deno.test("deserialize: reject packet identifier 0", () => {
+  // PUBACK with packet identifier 0.
+  const pubAck = new DataReader(new Uint8Array([0x40, 0x02, 0x00, 0x00]));
+  const pubAckHeader = m.readFixedHeader(pubAck)!;
+  assertThrows(
+    () => m.deserializePacket(pubAckHeader, pubAck),
+    Error,
+    "Packet Identifier",
+  );
+
+  // SUBSCRIBE with packet identifier 0.
+  const subscribe = new DataReader(
+    new Uint8Array([
+      0x82,
+      0x07,
+      0x00,
+      0x00, // packet identifier 0
+      0x00, // properties length
+      0x00,
+      0x01,
+      0x61, // topic filter "a"
+      0x00, // options
+    ]),
+  );
+  const subscribeHeader = m.readFixedHeader(subscribe)!;
+  assertThrows(
+    () => m.deserializePacket(subscribeHeader, subscribe),
+    Error,
+    "Packet Identifier",
+  );
+});
+
+Deno.test("deserialize: reject SUBSCRIBE with QoS 3 option", () => {
+  const r = new DataReader(
+    new Uint8Array([
+      0x82,
+      0x07,
+      0x00,
+      0x01,
+      0x00,
+      0x00,
+      0x01,
+      0x61,
+      0x03, // options: QoS 3
+    ]),
+  );
+  const h = m.readFixedHeader(r)!;
+  assertThrows(() => m.deserializePacket(h, r), Error, "QoS");
+});
+
+Deno.test("deserialize: reject SUBSCRIBE with reserved option bits", () => {
+  const r = new DataReader(
+    new Uint8Array([
+      0x82,
+      0x07,
+      0x00,
+      0x01,
+      0x00,
+      0x00,
+      0x01,
+      0x61,
+      0xc0, // reserved bits 6-7 set
+    ]),
+  );
+  const h = m.readFixedHeader(r)!;
+  assertThrows(() => m.deserializePacket(h, r), Error, "reserved");
+});
+
+Deno.test("deserialize: reject CONNECT Will QoS without Will Flag", () => {
+  const r = new DataReader(
+    new Uint8Array([
+      0x10,
+      0x0d,
+      0x00,
+      0x04,
+      0x4d,
+      0x51,
+      0x54,
+      0x54, // "MQTT"
+      0x05, // protocol version 5
+      0x0a, // Will QoS bit set, Will Flag clear
+      0x00,
+      0x00, // keepalive
+      0x00, // properties
+      0x00,
+      0x00, // empty client id
+    ]),
+  );
+  const h = m.readFixedHeader(r)!;
+  assertThrows(() => m.deserializePacket(h, r), Error, "Will");
+});
+
+Deno.test("deserialize: reject CONNECT password without username", () => {
+  const r = new DataReader(
+    new Uint8Array([
+      0x10,
+      0x10,
+      0x00,
+      0x04,
+      0x4d,
+      0x51,
+      0x54,
+      0x54, // "MQTT"
+      0x05, // protocol version 5
+      0x42, // Password Flag set, User Name Flag clear
+      0x00,
+      0x00, // keepalive
+      0x00, // properties
+      0x00,
+      0x00, // empty client id
+      0x00,
+      0x01,
+      0x78, // password "x"
+    ]),
+  );
+  const h = m.readFixedHeader(r)!;
+  assertThrows(() => m.deserializePacket(h, r), Error, "Password");
+});
+
+Deno.test("deserialize: reject duplicate property", () => {
+  // PUBLISH topic "a" with two Content Type (0x03) properties.
+  const r = new DataReader(
+    new Uint8Array([
+      0x30,
+      0x0c,
+      0x00,
+      0x01,
+      0x61,
+      0x08, // properties length
+      0x03,
+      0x00,
+      0x01,
+      0x62, // content type "b"
+      0x03,
+      0x00,
+      0x01,
+      0x62, // content type "b" again
+    ]),
+  );
+  const h = m.readFixedHeader(r)!;
+  assertThrows(() => m.deserializePacket(h, r), Error, "Duplicate");
+});
+
+Deno.test("serialize: reject UTF-8 string larger than 65535 bytes", () => {
+  const w = new m.Writer();
+  assertThrows(
+    () => w.addUTF8String("a".repeat(65536)),
+    Error,
+    "65535",
+  );
+});
+
+Deno.test("serialize: accept UTF-8 string of exactly 65535 bytes", () => {
+  const value = "a".repeat(65535);
+  const w = new m.Writer();
+  w.addUTF8String(value);
+  const r = new DataReader(w.getBufferView().subarray(m.maxFixedHeaderSize));
+  assertEquals(r.getUint16(), 65535);
+  assertEquals(r.getUTF8String(65535), value);
+});
+
+Deno.test("Client.subscribe/unsubscribe throw when not connected", async () => {
+  const client = new m.Client(
+    "mqtt://127.0.0.1:1",
+    {},
+    { reconnectTime: 0 as m.Milliseconds },
+  );
+  await assertRejects(
+    () =>
+      client.subscribe({
+        subscriptions: [{ topic: m.asTopicFilter("a/#") }],
+      }),
+    Error,
+    "not connected",
+  );
+  await assertRejects(
+    () => client.unsubscribe({ topic_filters: [m.asTopicFilter("a/#")] }),
+    Error,
+    "not connected",
+  );
+  await client.close();
 });
 
 Deno.test("serialize: reject password without username", () => {
