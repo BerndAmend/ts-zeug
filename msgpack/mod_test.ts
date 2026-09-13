@@ -1,7 +1,7 @@
 /**
  * Copyright 2023-2026 Bernd Amend. MIT license.
  */
-import { assertEquals, assertThrows } from "@std/assert";
+import { assert, assertEquals, assertThrows } from "@std/assert";
 import { deserialize, serialize, Serializer } from "./mod.ts";
 import { DataReader, toHexString } from "../helper/mod.ts";
 
@@ -281,4 +281,42 @@ Deno.test("msgpack: map key must be string or number", () => {
 
 Deno.test("msgpack: never_used (0xc1) decodes to undefined", () => {
   assertEquals(deserialize(new Uint8Array([0xc1])), undefined);
+});
+
+Deno.test("msgpack: __proto__ map key does not pollute the prototype", () => {
+  // fixmap(1) { "__proto__": { "polluted": true } }
+  const data = new Uint8Array([
+    0x81,
+    0xa9,
+    0x5f,
+    0x5f,
+    0x70,
+    0x72,
+    0x6f,
+    0x74,
+    0x6f,
+    0x5f,
+    0x5f, // "__proto__"
+    0x81,
+    0xa8,
+    0x70,
+    0x6f,
+    0x6c,
+    0x6c,
+    0x75,
+    0x74,
+    0x65,
+    0x64, // "polluted"
+    0xc3, // true
+  ]);
+  const result = deserialize(data) as Record<string, unknown>;
+  assert(
+    Object.prototype.hasOwnProperty.call(result, "__proto__"),
+    "the __proto__ key must be an own property",
+  );
+  assertEquals(
+    ({} as Record<string, unknown>).polluted,
+    undefined,
+    "Object.prototype must not be polluted",
+  );
 });
