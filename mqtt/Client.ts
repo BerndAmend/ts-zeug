@@ -453,6 +453,7 @@ export class Client implements AsyncDisposable {
                 this.#writable.releaseLock();
                 r.releaseLock();
                 await con.writable.close();
+                this.#writable = undefined;
                 this.#source.enqueue({
                   type: CustomPacketType.FailedConnectionAttempt,
                   msg: "See connectAck reason, no reconnect attempts",
@@ -492,6 +493,7 @@ export class Client implements AsyncDisposable {
             this.#writable.releaseLock();
             r.releaseLock();
             await con.writable.close();
+            this.#writable = undefined;
             this.#source.enqueue({
               type: CustomPacketType.FailedConnectionAttempt,
               msg: "No ConnAck",
@@ -506,7 +508,7 @@ export class Client implements AsyncDisposable {
       } catch (e: unknown) {
         try {
           if (con.writable.locked) {
-            this.#writable.releaseLock();
+            this.#writable?.releaseLock();
           }
           if (con.readable.locked) {
             r.releaseLock();
@@ -515,6 +517,7 @@ export class Client implements AsyncDisposable {
         } catch {
           //          console.error("Couldn't close connection", e);
         }
+        this.#writable = undefined;
         if (Error.isError(e)) {
           this.#source.enqueue({
             type: CustomPacketType.FailedConnectionAttempt,
@@ -696,8 +699,12 @@ export class Client implements AsyncDisposable {
       qosLevel !== QoS.At_most_once_delivery &&
       packet.packet_identifier === undefined
     ) {
-      const [pid] = this.#getPacketIdentifierHandler();
+      const [pid, acknowledgement] = this.#getPacketIdentifierHandler();
       packet = { ...packet, packet_identifier: pid };
+      // The acknowledgement is not surfaced to the caller of publish();
+      // swallow rejections so closing the connection does not produce an
+      // unhandled promise rejection.
+      void acknowledgement.catch(() => {});
     }
 
     const overrides = this.#preparePublishAlias(packet);
@@ -747,6 +754,9 @@ export class Client implements AsyncDisposable {
   async subscribe(
     packet: MakeSerializePacketType<Omit<SubscribePacket, "packet_identifier">>,
   ): Promise<SubAckPacket> {
+    if (this.#writable === undefined) {
+      throw new Error("not connected");
+    }
     const [packet_identifier, promise] = this.#getPacketIdentifierHandler();
     const p: Omit<SubscribePacket, "type"> = {
       ...structuredClone(packet),
@@ -777,6 +787,9 @@ export class Client implements AsyncDisposable {
       Omit<UnsubscribePacket, "packet_identifier">
     >,
   ): Promise<UnsubAckPacket> {
+    if (this.#writable === undefined) {
+      throw new Error("not connected");
+    }
     const [packet_identifier, promise] = this.#getPacketIdentifierHandler();
     const p: Omit<UnsubscribePacket, "type"> = {
       ...structuredClone(packet),
