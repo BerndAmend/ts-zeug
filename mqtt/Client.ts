@@ -5,7 +5,7 @@
  * @license MIT
  * @copyright 2023-2026 Bernd Amend
  */
-import { connectTcp, connectTls, deadline, delay } from "../helper/mod.ts";
+import { deadline, delay } from "../helper/mod.ts";
 import { streamifyWebSocket } from "../helper/websocket.ts";
 import {
   type AllPacket,
@@ -190,6 +190,8 @@ export async function connectLowLevel(
         writable: conn.writable,
       };
     }
+    // Imported lazily so that the browser build never pulls in `node:net`.
+    const { connectTcp } = await import("../helper/socket.ts");
     const conn = await connectTcp(address.hostname, port);
     return {
       readable: conn.readable.pipeThrough(ts),
@@ -209,6 +211,8 @@ export async function connectLowLevel(
         writable: conn.writable,
       };
     }
+    // Imported lazily so that the browser build never pulls in `node:tls`.
+    const { connectTls } = await import("../helper/socket.ts");
     const conn = await connectTls(address.hostname, port);
     return {
       readable: conn.readable.pipeThrough(ts),
