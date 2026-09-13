@@ -78,6 +78,7 @@ export class DeserializeStream implements Transformer<Uint8Array, AllPacket> {
         );
       } catch (e) {
         controller.error(`Error while deserializing ${e}`);
+        return;
       }
       firstMessage = false;
     }

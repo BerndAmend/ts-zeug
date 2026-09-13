@@ -112,7 +112,9 @@ export class Writer extends DataWriter {
    */
   addUTF8String(str: string) {
     if (this.automaticallyExtendBuffer) {
-      this.ensureBufferSize(str.length * 3); // the buffer may be to big
+      // A UTF-16 code unit encodes to at most 3 UTF-8 bytes, plus the
+      // 2-byte length prefix. The buffer may end up too big.
+      this.ensureBufferSize(str.length * 3 + 2);
     }
     const lengthPos = this.pos;
     this.addUint16(0);
@@ -122,6 +124,11 @@ export class Writer extends DataWriter {
     );
     if (read !== str.length) {
       throw new Error("Couldn't write the entire string");
+    }
+    if (written > 65535) {
+      throw new Error(
+        `UTF-8 encoded string exceeds the 65535 byte limit: ${written}`,
+      );
     }
     this.pos = lengthPos;
     this.addUint16(written);

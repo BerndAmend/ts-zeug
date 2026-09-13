@@ -134,6 +134,18 @@ function readUTF8String(reader: DataReader): string {
   return reader.getUTF8String(len);
 }
 
+/**
+ * Reads a Packet Identifier (2 byte integer). Per MQTT 5.0 [MQTT-2.2.1-2] a
+ * Packet Identifier of 0 is a Protocol Error.
+ */
+function readPacketIdentifier(reader: DataReader): PacketIdentifier {
+  const identifier = reader.getUint16();
+  if (identifier === 0) {
+    throw new Error("Invalid Packet Identifier: must not be 0");
+  }
+  return identifier as PacketIdentifier;
+}
+
 function readBinaryData(
   reader: DataReader,
   options?: PublishDeserializeOptions,
@@ -167,9 +179,23 @@ function readProperties(
 
   const r = reader.getDataReader(length);
   const ret: AllProperties = {};
+  const seen = new Set<Property>();
 
   while (r.pos < length) {
     const id: Property = r.getUint8();
+    // [MQTT-2.2.2-1] A property MUST NOT appear more than once, except for
+    // the User Property and (in PUBLISH) the Subscription Identifier.
+    if (
+      id !== Property.User_Property &&
+      id !== Property.Subscription_Identifier
+    ) {
+      if (seen.has(id)) {
+        throw new Error(
+          `Duplicate property identifier: 0x${id.toString(16)}`,
+        );
+      }
+      seen.add(id);
+    }
     switch (id) {
       case Property.Payload_Format_Indicator:
         ret.payload_format_indicator = r.getUint8();
@@ -321,6 +347,23 @@ function deserializeConnectPacket(
   const willFlag = (connectFlags & 0b0000_0100) !== 0;
   ret.clean_start = (connectFlags & 0b0000_0010) !== 0;
 
+  // 3.1.2.6/3.1.2.7 If the Will Flag is 0 the Will QoS and Will Retain bits
+  // MUST be 0. If the Will Flag is 1 the Will QoS MUST NOT be 3.
+  if (!willFlag && (willQoS !== 0 || willRetainFlag)) {
+    throw new Error(
+      "Invalid Connect flags: Will QoS/Retain set without a Will Flag",
+    );
+  }
+  if (willFlag && willQoS === QoS.Reserved) {
+    throw new Error("Invalid Connect flags: Will QoS must not be 3");
+  }
+  // [MQTT-3.1.2-22] If the User Name Flag is 0 the Password Flag MUST be 0.
+  if (passwordFlag && !usernameFlag) {
+    throw new Error(
+      "Invalid Connect flags: Password Flag set without User Name Flag",
+    );
+  }
+
   ret.keepalive = r.getUint16() as Seconds;
 
   const props = readProperties(r);
@@ -430,7 +473,7 @@ function deserializePublishPacket(
 
   let packet_identifier: PacketIdentifier | undefined;
   if (qos !== QoS.At_most_once_delivery) {
-    packet_identifier = r.getUint16() as PacketIdentifier;
+    packet_identifier = readPacketIdentifier(r);
   }
 
   const props = readProperties(r, options);
@@ -511,7 +554,7 @@ function deserializePubAckPacket(
   }
   const ret: PubAckPacket = {
     type: ControlPacketType.PubAck,
-    packet_identifier: r.getUint16() as PacketIdentifier,
+    packet_identifier: readPacketIdentifier(r),
   };
   if (r.hasMoreData) {
     ret.reason_code = r.getUint8();
@@ -538,7 +581,7 @@ function deserializePubRecPacket(
   }
   const ret: PubRecPacket = {
     type: ControlPacketType.PubRec,
-    packet_identifier: r.getUint16() as PacketIdentifier,
+    packet_identifier: readPacketIdentifier(r),
   };
   if (r.hasMoreData) {
     ret.reason_code = r.getUint8();
@@ -565,7 +608,7 @@ function deserializePubRelPacket(
   }
   const ret: PubRelPacket = {
     type: ControlPacketType.PubRel,
-    packet_identifier: r.getUint16() as PacketIdentifier,
+    packet_identifier: readPacketIdentifier(r),
   };
   if (r.hasMoreData) {
     ret.reason_code = r.getUint8();
@@ -592,7 +635,7 @@ function deserializePubCompPacket(
   }
   const ret: PubCompPacket = {
     type: ControlPacketType.PubComp,
-    packet_identifier: r.getUint16() as PacketIdentifier,
+    packet_identifier: readPacketIdentifier(r),
   };
   if (r.hasMoreData) {
     ret.reason_code = r.getUint8();
@@ -620,7 +663,7 @@ function deserializeSubscribePacket(
 
   const ret: SubscribePacket = {
     type: ControlPacketType.Subscribe,
-    packet_identifier: r.getUint16() as PacketIdentifier,
+    packet_identifier: readPacketIdentifier(r),
     subscriptions: [],
   };
 
@@ -646,6 +689,26 @@ function deserializeSubscribePacket(
       retain_as_published?: boolean;
     } = { topic: topicFilter };
     const qos = flags & 0b11;
+    // 3.8.3.1 Reserved bits 6-7 MUST be 0, QoS MUST NOT be 3 and Retain
+    // Handling MUST NOT be 3.
+    if ((flags & 0b1100_0000) !== 0) {
+      throw new Error(
+        "Invalid Subscribe options: reserved bits must be 0",
+      );
+    }
+    if (qos === QoS.Reserved) {
+      throw new Error("Invalid Subscribe options: QoS must not be 3");
+    }
+    const retain_handling = (flags >> 4) & 0b11;
+    if (
+      retain_handling >
+        RetainHandling
+          .Do_not_send_retained_messages_at_the_time_of_the_subscribe
+    ) {
+      throw new Error(
+        "Invalid Subscribe options: Retain Handling must not be 3",
+      );
+    }
     if (qos !== 0) {
       subscription.qos = qos;
     }
@@ -657,12 +720,11 @@ function deserializeSubscribePacket(
       subscription.retain_as_published = true;
     }
 
-    const retain_handling: RetainHandling = flags >> 4;
     if (
       retain_handling !==
         RetainHandling.Send_retained_messages_at_the_time_of_the_subscribe
     ) {
-      subscription.retain_handling = retain_handling;
+      subscription.retain_handling = retain_handling as RetainHandling;
     }
 
     ret.subscriptions.push(subscription);
@@ -676,12 +738,17 @@ function deserializeSubscribePacket(
  * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901171}
  */
 function deserializeSubAckPacket(
-  _fixedHeader: FixedHeader,
+  fixedHeader: FixedHeader,
   r: DataReader,
 ): SubAckPacket {
+  if (fixedHeader.flags !== 0) {
+    throw new Error(
+      `Invalid flags for SubAck packet: ${fixedHeader.flags}, expected 0`,
+    );
+  }
   const ret: SubAckPacket = {
     type: ControlPacketType.SubAck,
-    packet_identifier: r.getUint16() as PacketIdentifier,
+    packet_identifier: readPacketIdentifier(r),
     reason_codes: [],
   };
 
@@ -712,7 +779,7 @@ function deserializeUnsubscribePacket(
   }
   const ret: UnsubscribePacket = {
     type: ControlPacketType.Unsubscribe,
-    packet_identifier: r.getUint16() as PacketIdentifier,
+    packet_identifier: readPacketIdentifier(r),
     topic_filters: [],
   };
 
@@ -733,12 +800,17 @@ function deserializeUnsubscribePacket(
  * @see {@link https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html#_Toc3901187}
  */
 function deserializeUnsubAckPacket(
-  _fixedHeader: FixedHeader,
+  fixedHeader: FixedHeader,
   r: DataReader,
 ): UnsubAckPacket {
+  if (fixedHeader.flags !== 0) {
+    throw new Error(
+      `Invalid flags for UnsubAck packet: ${fixedHeader.flags}, expected 0`,
+    );
+  }
   const ret: UnsubAckPacket = {
     type: ControlPacketType.UnsubAck,
-    packet_identifier: r.getUint16() as PacketIdentifier,
+    packet_identifier: readPacketIdentifier(r),
     reason_codes: [],
   };
 
