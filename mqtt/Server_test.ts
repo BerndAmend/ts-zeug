@@ -307,7 +307,9 @@ async function countPublishes(
       try {
         const { done, value } = await deadline(reader.read(), remaining);
         if (done) break;
-        if ((value.type as number) === ControlPacketType.Publish) count++;
+        if ((value.type as number) === (ControlPacketType.Publish as number)) {
+          count++;
+        }
       } catch (e: unknown) {
         if (e instanceof DOMException && e.name === "TimeoutError") continue;
         throw e;
@@ -1470,7 +1472,10 @@ testServerOnly("server_reference in shutdown DISCONNECT", async () => {
     while (Date.now() < deadlineMs) {
       const { done, value } = await deadline(reader.read(), 5000);
       if (done) return null;
-      if ((value as { type: number }).type === ControlPacketType.Disconnect) {
+      if (
+        (value as { type: number }).type ===
+          (ControlPacketType.Disconnect as number)
+      ) {
         return value as {
           reason_code?: number;
           properties?: { server_reference?: string };
@@ -1741,7 +1746,9 @@ testBroker("Server disconnects client on keep-alive timeout", async () => {
   }
 });
 
-testBroker("Will delay interval delays will publication", async () => {
+// The will delay is only applied by the in-process server. Mosquitto publishes
+// the will immediately when the client sends DISCONNECT with reason 0x04.
+testServerOnly("Will delay interval delays will publication", async () => {
   const server = await startBroker();
   const port = server.port;
   try {
@@ -1758,6 +1765,9 @@ testBroker("Will delay interval delays will publication", async () => {
 
     const willClient = new Client(`mqtt://127.0.0.1:${port}`, {
       client_id: asClientID("will-delay-sender"),
+      // The Will Delay is capped by the Session Expiry Interval; a non-zero
+      // value is required for the delay to apply.
+      properties: { session_expiry_interval: 60 as Seconds },
       will: {
         topic: asTopic("will/delay"),
         payload: "delayed will",
