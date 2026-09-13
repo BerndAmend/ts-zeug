@@ -27,3 +27,6 @@ export * from "./Client.ts";
 
 /** Topic alias mapper (LRU-based). */
 export * from "./TopicAliasMapper.ts";
+
+/** MQTT 5.0 broker implementation. */
+export * from "./Server.ts";
