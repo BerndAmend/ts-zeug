@@ -5,7 +5,10 @@
 export function streamifyWebSocket(
   url: string | URL,
   protocols?: string | string[],
-) {
+): {
+  readable: ReadableStream<string | Uint8Array<ArrayBuffer>>;
+  writable: WritableStream<Parameters<WebSocket["send"]>[0]>;
+} {
   const ws = new WebSocket(url, protocols);
   ws.binaryType = "arraybuffer";
 
@@ -97,7 +100,7 @@ export class WebSocketSink {
     this._ws.send(chunk);
   }
 
-  close() {
+  close(): Promise<void> {
     return this._closeWS(1000);
   }
 

@@ -151,7 +151,7 @@ class RetainedMessages {
 
 /** One level of the subscription trie. */
 class TrieNode {
-  children = new Map<string, TrieNode>();
+  children: Map<string, TrieNode> = new Map();
   /** Clients whose subscription filter ends exactly at this node. */
   subscribers: BrokerClient[] = [];
   /** Subscription identifiers per subscriber (parallel array). */
@@ -211,7 +211,7 @@ const SUB_DEFAULTS: SubParams = {
 
 /** Topic trie mapping subscription filters to their subscribers. */
 class SubscriptionTable {
-  readonly root = new TrieNode();
+  readonly root: TrieNode = new TrieNode();
   readonly #shared = new Map<string, Map<string, SharedGroup>>();
   // groupName → filter → SharedGroup
 
@@ -723,7 +723,7 @@ interface Connection {
 /** Per-connection broker state and helpers. */
 class BrokerClient {
   id!: ClientID;
-  readonly writer = new Writer();
+  readonly writer: Writer = new Writer();
   #writableWriter?: WritableStreamDefaultWriter;
   #writableIsOpen = true;
 
@@ -736,10 +736,10 @@ class BrokerClient {
   remoteAddr?: Deno.NetAddr;
 
   // Topic alias — server → client (outgoing)
-  readonly outgoingAliasMapper = new TopicAliasMapper();
+  readonly outgoingAliasMapper: TopicAliasMapper = new TopicAliasMapper();
 
   // Topic alias — client → server (incoming, resolved in processPacket)
-  incomingAliasToTopic = new Map<number, Topic>();
+  incomingAliasToTopic: Map<number, Topic> = new Map();
   clientAliasMaximum = 0;
 
   // Outgoing packet identifier allocation (per-connection, 1..65535)
@@ -773,7 +773,7 @@ class BrokerClient {
   sharedSubscriptions: Array<{ group: string; filter: string; qos: QoS }> = [];
 
   // Keep-alive
-  lastPingReceived = Date.now();
+  lastPingReceived: number = Date.now();
   #keepAliveTimer?: ReturnType<typeof setInterval>;
 
   // Disconnect reason for will execution
@@ -946,13 +946,13 @@ export interface ServerOptions {
  */
 export class Server implements AsyncDisposable {
   /** Currently connected clients, keyed by their client id. */
-  readonly clients = new Map<ClientID, BrokerClient>();
+  readonly clients: Map<ClientID, BrokerClient> = new Map();
   /** Topic trie including wildcard and shared subscriptions. */
-  readonly subscriptions = new SubscriptionTable();
+  readonly subscriptions: SubscriptionTable = new SubscriptionTable();
   /** Retained messages keyed by topic. */
-  readonly retained = new RetainedMessages();
+  readonly retained: RetainedMessages = new RetainedMessages();
   /** Persistent sessions for clients using a non-zero session expiry. */
-  readonly sessions = new SessionStore();
+  readonly sessions: SessionStore = new SessionStore();
   readonly #addresses: URL[];
   readonly #authHandler: AuthHandler;
   readonly #tlsOptions?: { cert: string; key: string };
