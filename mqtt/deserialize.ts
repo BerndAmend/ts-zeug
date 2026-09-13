@@ -343,13 +343,16 @@ function deserializeConnectPacket(
   const usernameFlag = (connectFlags & 0b1000_0000) !== 0;
   const passwordFlag = (connectFlags & 0b0100_0000) !== 0;
   const willRetainFlag = (connectFlags & 0b0010_0000) !== 0;
-  const willQoS = (connectFlags & 0b0001_1000) >> 3;
+  const willQoS = ((connectFlags & 0b0001_1000) >> 3) as QoS;
   const willFlag = (connectFlags & 0b0000_0100) !== 0;
   ret.clean_start = (connectFlags & 0b0000_0010) !== 0;
 
   // 3.1.2.6/3.1.2.7 If the Will Flag is 0 the Will QoS and Will Retain bits
   // MUST be 0. If the Will Flag is 1 the Will QoS MUST NOT be 3.
-  if (!willFlag && (willQoS !== 0 || willRetainFlag)) {
+  if (
+    !willFlag &&
+    (willQoS !== QoS.At_most_once_delivery || willRetainFlag)
+  ) {
     throw new Error(
       "Invalid Connect flags: Will QoS/Retain set without a Will Flag",
     );
@@ -688,7 +691,7 @@ function deserializeSubscribePacket(
       retain_handling?: RetainHandling; // defaults to Send_retained_messages_at_the_time_of_the_subscribe
       retain_as_published?: boolean;
     } = { topic: topicFilter };
-    const qos = flags & 0b11;
+    const qos = (flags & 0b11) as QoS;
     // 3.8.3.1 Reserved bits 6-7 MUST be 0, QoS MUST NOT be 3 and Retain
     // Handling MUST NOT be 3.
     if ((flags & 0b1100_0000) !== 0) {
@@ -699,7 +702,7 @@ function deserializeSubscribePacket(
     if (qos === QoS.Reserved) {
       throw new Error("Invalid Subscribe options: QoS must not be 3");
     }
-    const retain_handling = (flags >> 4) & 0b11;
+    const retain_handling = ((flags >> 4) & 0b11) as RetainHandling;
     if (
       retain_handling >
         RetainHandling
@@ -709,7 +712,7 @@ function deserializeSubscribePacket(
         "Invalid Subscribe options: Retain Handling must not be 3",
       );
     }
-    if (qos !== 0) {
+    if (qos !== QoS.At_most_once_delivery) {
       subscription.qos = qos;
     }
     if (flags & 0b100) {
@@ -724,7 +727,7 @@ function deserializeSubscribePacket(
       retain_handling !==
         RetainHandling.Send_retained_messages_at_the_time_of_the_subscribe
     ) {
-      subscription.retain_handling = retain_handling as RetainHandling;
+      subscription.retain_handling = retain_handling;
     }
 
     ret.subscriptions.push(subscription);
