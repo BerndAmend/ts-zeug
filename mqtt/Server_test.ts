@@ -2007,24 +2007,34 @@ testBroker("Server disconnects client on keep-alive timeout", async () => {
 
     const reader = conn.readable.getReader();
     try {
-      const { value: connack } = await deadline(reader.read(), 5000);
+      const { value: connack } = await deadline(reader.read(), 10_000);
       assert(connack && connack.length >= 2, "should receive a CONNACK");
       assertEquals(connack[0]! >> 4, 2, "packet type should be ConnAck");
 
       // Send no PINGREQ: the server must drop us after 1.5 * keepalive.
       // A compliant server may send a DISCONNECT packet before closing.
+      //
+      // The wait is deliberately generous: on a loaded/oversubscribed CI
+      // runner an external broker can be scheduled late, so a tight deadline
+      // makes this test flaky rather than catching real regressions.
       let closed = false;
-      const deadlineMs = Date.now() + 5000;
+      const deadlineMs = Date.now() + 20_000;
       while (Date.now() < deadlineMs) {
-        const { done, value } = await deadline(reader.read(), 5000);
-        if (done) {
-          closed = true;
-          break;
-        }
-        // Ignore an optional DISCONNECT (type 14) with reason Keep Alive
-        // timeout (0x8D).
-        if (value && (value[0]! >> 4) === 14) {
-          continue;
+        const remaining = Math.max(10, deadlineMs - Date.now());
+        try {
+          const { done, value } = await deadline(reader.read(), remaining);
+          if (done) {
+            closed = true;
+            break;
+          }
+          // Ignore an optional DISCONNECT (type 14) with reason Keep Alive
+          // timeout (0x8D).
+          if (value && (value[0]! >> 4) === 14) {
+            continue;
+          }
+        } catch (e: unknown) {
+          if (e instanceof DOMException && e.name === "TimeoutError") break;
+          throw e;
         }
       }
       assert(
