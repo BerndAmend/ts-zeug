@@ -21,7 +21,7 @@
  * @copyright 2026 Bernd Amend
  */
 import { assert, assertEquals, assertNotEquals } from "@std/assert";
-import { deadline } from "@std/async";
+import { deadline, delay } from "@std/async";
 import {
   asClientID,
   asTopic,
@@ -31,6 +31,7 @@ import {
   ConnectPacket,
   ConnectReasonCode,
   ControlPacketType,
+  CustomPacketType,
   DisconnectReasonCode,
   PublishPacket,
   QoS,
@@ -41,7 +42,7 @@ import {
 import { type AuthHandler, Server, type ServerOptions } from "./Server.ts";
 import { Mosquitto } from "./Mosquitto.ts";
 import type { OmitPacketType } from "./serialize.ts";
-import type { AllPacket, Seconds } from "./packets.ts";
+import type { AllPacket, Milliseconds, Seconds } from "./packets.ts";
 
 type ConnectParams = OmitPacketType<ConnectPacket>;
 type PublishParams = OmitPacketType<PublishPacket>;
@@ -372,6 +373,303 @@ testServerOnly("CONNECT rejected by auth handler", async () => {
     const ack = await awaitConnAck(client);
     assertEquals(ack?.connect_reason_code, ConnectReasonCode.Not_authorized);
     await client.close();
+  } finally {
+    await server[Symbol.asyncDispose]();
+  }
+});
+
+testServerOnly(
+  "permanent CONNACK refusal emits ConnectionRefused and stops retrying",
+  async () => {
+    let attempts = 0;
+    const rejectAuth: AuthHandler = {
+      // deno-lint-ignore require-await
+      async authenticate() {
+        attempts++;
+        return { reason: ConnectReasonCode.Not_authorized };
+      },
+    };
+    const server = new Server("mqtt://127.0.0.1:0", rejectAuth);
+    server.listen();
+    const port = server.ports[0]!;
+    try {
+      const client = new Client(
+        `mqtt://127.0.0.1:${port}`,
+        { client_id: asClientID("permanent-refusal") },
+        { reconnectTime: 20 as Milliseconds },
+      );
+
+      // The rejected CONNACK is emitted first, then the ConnectionRefused event.
+      const refused = await readUntil(
+        client,
+        CustomPacketType.ConnectionRefused,
+      );
+      assert(refused !== null, "expected a ConnectionRefused event");
+      assertEquals(refused.type, CustomPacketType.ConnectionRefused);
+      const refusedMsg = (refused as { msg?: unknown }).msg;
+      assert(typeof refusedMsg === "string", "ConnectionRefused carries a msg");
+      assert(refusedMsg.length > 0, "ConnectionRefused msg is not empty");
+      assert(!client.isConnected, "client must not report itself as connected");
+
+      // Wait well past reconnectTime; a permanent refusal must not be retried.
+      await delay(200);
+      assertEquals(attempts, 1, "client must not retry a permanent refusal");
+
+      await client.close();
+    } finally {
+      await server[Symbol.asyncDispose]();
+    }
+  },
+);
+
+testServerOnly(
+  "client can be re-opened directly after a permanent refusal",
+  async () => {
+    let attempts = 0;
+    const auth: AuthHandler = {
+      // deno-lint-ignore require-await
+      async authenticate() {
+        attempts++;
+        return {
+          reason: attempts === 1
+            ? ConnectReasonCode.Not_authorized
+            : ConnectReasonCode.Success,
+        };
+      },
+    };
+    const server = new Server("mqtt://127.0.0.1:0", auth);
+    server.listen();
+    const port = server.ports[0]!;
+    try {
+      const client = new Client(
+        `mqtt://127.0.0.1:${port}`,
+        { client_id: asClientID("reopen") },
+      );
+
+      // The readable stream must end (done) after the permanent refusal.
+      const types: number[] = [];
+      for await (const p of client.readable) {
+        types.push(p.type as number);
+      }
+      assert(
+        types.includes(CustomPacketType.ConnectionRefused),
+        "expected ConnectionRefused before the stream ended",
+      );
+
+      // open() works without calling close() first.
+      client.open();
+      const ack = await awaitConnAck(client);
+      assertEquals(ack?.connect_reason_code, ConnectReasonCode.Success);
+      assertEquals(attempts, 2);
+
+      await client.close();
+    } finally {
+      await server[Symbol.asyncDispose]();
+    }
+  },
+);
+
+testServerOnly(
+  "transient CONNACK refusal retries until the server accepts",
+  async () => {
+    let attempts = 0;
+    const flakyAuth: AuthHandler = {
+      // deno-lint-ignore require-await
+      async authenticate() {
+        attempts++;
+        return {
+          reason: attempts < 3
+            ? ConnectReasonCode.Server_busy
+            : ConnectReasonCode.Success,
+        };
+      },
+    };
+    const server = new Server("mqtt://127.0.0.1:0", flakyAuth);
+    server.listen();
+    const port = server.ports[0]!;
+    try {
+      const client = new Client(
+        `mqtt://127.0.0.1:${port}`,
+        { client_id: asClientID("transient-refusal") },
+        { reconnectTime: 20 as Milliseconds },
+      );
+
+      const reader = client.readable.getReader();
+      let failedAttempts = 0;
+      let ack: ConnAckPacket | null = null;
+      try {
+        const deadlineMs = Date.now() + 5000;
+        while (Date.now() < deadlineMs) {
+          const remaining = Math.max(10, deadlineMs - Date.now());
+          let result: ReadableStreamReadResult<AnyPacket>;
+          try {
+            result = await deadline(reader.read(), remaining);
+          } catch (e: unknown) {
+            if (e instanceof DOMException && e.name === "TimeoutError") {
+              continue;
+            }
+            throw e;
+          }
+          if (result.done) break;
+          const value = result.value;
+          if (value.type === CustomPacketType.FailedConnectionAttempt) {
+            failedAttempts++;
+          }
+          if (
+            value.type === ControlPacketType.ConnAck &&
+            (value as ConnAckPacket).connect_reason_code ===
+              ConnectReasonCode.Success
+          ) {
+            ack = value as ConnAckPacket;
+            break;
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+
+      assert(ack !== null, "expected a successful ConnAck after retrying");
+      assertEquals(ack?.connect_reason_code, ConnectReasonCode.Success);
+      assert(
+        failedAttempts >= 2,
+        `expected FailedConnectionAttempt events, saw ${failedAttempts}`,
+      );
+      assert(attempts >= 3, `expected retries, saw ${attempts} attempts`);
+      assert(client.isConnected, "client should be connected after recovery");
+
+      await client.close();
+    } finally {
+      await server[Symbol.asyncDispose]();
+    }
+  },
+);
+
+testServerOnly(
+  "reconnectTime null disables retry after a transient CONNACK refusal",
+  async () => {
+    let attempts = 0;
+    const busyAuth: AuthHandler = {
+      // deno-lint-ignore require-await
+      async authenticate() {
+        attempts++;
+        return { reason: ConnectReasonCode.Server_busy };
+      },
+    };
+    const server = new Server("mqtt://127.0.0.1:0", busyAuth);
+    server.listen();
+    const port = server.ports[0]!;
+    try {
+      const client = new Client(
+        `mqtt://127.0.0.1:${port}`,
+        { client_id: asClientID("no-retry") },
+        { reconnectTime: null },
+      );
+
+      const failed = await readUntil(
+        client,
+        CustomPacketType.FailedConnectionAttempt,
+      );
+      assert(failed !== null, "expected a FailedConnectionAttempt event");
+
+      // Wait longer than the default reconnectTime: a retry would have happened.
+      await delay(1200);
+      assertEquals(attempts, 1, "client must not retry when disabled");
+
+      await client.close();
+    } finally {
+      await server[Symbol.asyncDispose]();
+    }
+  },
+);
+
+Deno.test(
+  "reconnectTime null does not reconnect after a lost connection",
+  async () => {
+    const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
+    const port = (listener.addr as Deno.NetAddr).port;
+    let accepts = 0;
+    const serverTask = (async () => {
+      while (true) {
+        let conn: Deno.Conn;
+        try {
+          conn = await listener.accept();
+        } catch {
+          return; // listener closed
+        }
+        accepts++;
+        // Read the CONNECT, reply with CONNACK (Success) and drop the connection.
+        const reader = conn.readable.getReader();
+        try {
+          await reader.read();
+        } finally {
+          reader.releaseLock();
+        }
+        try {
+          const writer = conn.writable.getWriter();
+          await writer.write(new Uint8Array([0x20, 0x03, 0x00, 0x00, 0x00]));
+          writer.releaseLock();
+          await conn.writable.close();
+        } catch {
+          // client already gone
+        }
+      }
+    })();
+
+    try {
+      const client = new Client(
+        `mqtt://127.0.0.1:${port}`,
+        { client_id: asClientID("no-reconnect") },
+        { reconnectTime: null },
+      );
+
+      const closed = await readUntil(client, CustomPacketType.ConnectionClosed);
+      assert(closed !== null, "expected a ConnectionClosed event");
+
+      // Wait longer than the default reconnectTime: a retry would have happened.
+      await delay(1200);
+      assertEquals(accepts, 1, "client must not reconnect when disabled");
+
+      await client.close();
+    } finally {
+      listener.close();
+      await serverTask;
+    }
+  },
+);
+
+testServerOnly("close aborts a pending reconnect delay", async () => {
+  const busyAuth: AuthHandler = {
+    // deno-lint-ignore require-await
+    async authenticate() {
+      return { reason: ConnectReasonCode.Server_busy };
+    },
+  };
+  const server = new Server("mqtt://127.0.0.1:0", busyAuth);
+  server.listen();
+  const port = server.ports[0]!;
+  try {
+    const client = new Client(
+      `mqtt://127.0.0.1:${port}`,
+      { client_id: asClientID("abort-reconnect") },
+      { reconnectTime: 5000 as Milliseconds },
+    );
+
+    const failed = await readUntil(
+      client,
+      CustomPacketType.FailedConnectionAttempt,
+    );
+    assert(failed !== null, "expected a FailedConnectionAttempt event");
+
+    // Give the handler time to enter the long (5s) reconnect delay.
+    await delay(50);
+
+    const start = performance.now();
+    await client.close();
+    const elapsed = performance.now() - start;
+    assert(
+      elapsed < 1000,
+      `close() should abort the reconnect delay, took ${elapsed}ms`,
+    );
   } finally {
     await server[Symbol.asyncDispose]();
   }

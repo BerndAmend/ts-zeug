@@ -58,16 +58,33 @@ import { TopicAliasMapper } from "./TopicAliasMapper.ts";
  * Configuration properties for the MQTT Client.
  */
 export type ClientProperties = {
-  /** Time in milliseconds to wait before reconnecting. 0 disables auto-reconnect. */
-  reconnectTime?: Milliseconds;
+  /**
+   * Time in milliseconds to wait before reconnecting after a failed connection
+   * attempt or a lost connection.
+   *
+   * - a positive number waits that long before reconnecting,
+   * - `0` reconnects immediately,
+   * - `null` disables automatic reconnection. The initial connection is still
+   *   attempted, but the client stops after a failure or a lost connection
+   *   instead of retrying. Call `open()` again once the readable stream has
+   *   ended (or create a new client) to connect manually later.
+   *
+   * Omit the property to use {@link DefaultClientProperties.reconnectTime}.
+   */
+  reconnectTime?: Milliseconds | null;
   /** Timeout in milliseconds for the CONNECT/CONNACK handshake. */
   connectTimeout?: Milliseconds;
   /** How to deserialize PUBLISH packet payloads. */
   publishDeserializeOptions?: PublishDeserializeOptions;
 };
 
-/** Default values for ClientProperties. */
-export const DefaultClientProperties: Required<ClientProperties> = {
+/**
+ * Default values for {@link ClientProperties}. `reconnectTime` is never `null`
+ * here, so the default keeps automatic reconnection enabled.
+ */
+export const DefaultClientProperties: Required<ClientProperties> & {
+  reconnectTime: Milliseconds;
+} = {
   reconnectTime: 1_000 as Milliseconds,
   connectTimeout: 10_000 as Milliseconds,
   publishDeserializeOptions: PublishDeserializeOptions.PayloadFormatIndicator,
@@ -100,6 +117,7 @@ export function logPacket(packet: AllPacket | CustomPackets) {
       break;
     case CustomPacketType.Error:
     case CustomPacketType.FailedConnectionAttempt:
+    case CustomPacketType.ConnectionRefused:
       console.error(
         `%c${CustomPacketType[packet.type]}`,
         "color: red",
@@ -240,6 +258,7 @@ export async function connectLowLevel(
 /**
  * Default Client implementation providing the following features
  *  - auto-reconnect, keeping the assigned client id
+ *  - retry on transient CONNACK refusals, give up on permanent ones
  *  - send pings
  */
 export class Client implements AsyncDisposable {
@@ -250,6 +269,8 @@ export class Client implements AsyncDisposable {
   #messageHandlerPromise: Promise<void> | undefined;
   #active = false;
   #pingIntervalId?: ReturnType<typeof setInterval>;
+  /** Aborts a pending reconnect delay when the client is closed. */
+  #reconnectAbort = new AbortController();
   #source = new ClientSource();
   #readable = new ReadableStream<AllPacket | CustomPackets>(this.#source);
 
@@ -306,6 +327,10 @@ export class Client implements AsyncDisposable {
    * Creates a new MQTT Client that connects to the given address.
    * The connection is established automatically.
    * If the connection fails, it will retry to connect after the reconnectTime.
+   * Set `reconnectTime` to `null` to disable automatic reconnection entirely.
+   * A CONNACK with a permanent refusal reason (bad credentials, banned, ...)
+   * stops the automatic reconnect and is reported as
+   * {@link CustomPacketType.ConnectionRefused}.
    * If the connection was closed with close(), you have to call open() to re-open the connection.
    * Supported protocols:
    *   TCP: mqtt://hostname[:port], tcp://hostname[:port]
@@ -365,14 +390,21 @@ export class Client implements AsyncDisposable {
   }
 
   /**
-   * This function is called automatically in the constructor and is only required if the connection was closed with close().
+   * This function is called automatically in the constructor and is only
+   * required if the connection was closed with close() or if the client gave up
+   * after a permanent CONNACK refusal. It can also be called directly once the
+   * {@link Client.readable} stream has ended (after `ConnectionRefused` or
+   * `ConnectionClosed`).
    */
   open() {
     if (this.#messageHandlerPromise) {
       throw new Error("open was already called");
     }
     this.#active = true;
-    this.#messageHandlerPromise = this.#handleMessages();
+    this.#reconnectAbort = new AbortController();
+    this.#messageHandlerPromise = this.#handleMessages().finally(() =>
+      this.#resetConnectionState()
+    );
   }
 
   /**
@@ -382,10 +414,12 @@ export class Client implements AsyncDisposable {
    * @returns when the connection was closed
    */
   async close(disconnectPacket?: DisconnectPacket) {
-    if (!this.#messageHandlerPromise) {
+    const handler = this.#messageHandlerPromise;
+    if (!handler) {
       return;
     }
     this.#active = false;
+    this.#reconnectAbort.abort();
     this.#source.enqueue({ type: CustomPacketType.CloseLocally });
     try {
       if (this.#writable) {
@@ -396,14 +430,91 @@ export class Client implements AsyncDisposable {
     } catch {
       // The connection could already be closed
     }
-    await this.#messageHandlerPromise;
+    await handler;
+  }
 
+  /**
+   * Ends the current readable stream and prepares a fresh one.
+   *
+   * Called automatically via `finally` when the message handler stops, either
+   * because the client was closed or because it gave up (permanent CONNACK
+   * refusal or disabled auto-reconnect). Afterwards {@link Client.open} can be
+   * called again.
+   */
+  #resetConnectionState() {
+    this.#active = false;
     this.#source.close();
     this.#source = new ClientSource();
     this.#readable = new ReadableStream<AllPacket | CustomPackets>(
       this.#source,
     );
     this.#messageHandlerPromise = undefined;
+  }
+
+  /**
+   * Determines whether a CONNACK reason code is a *permanent* refusal.
+   *
+   * A permanent refusal means the server rejected the connection because of
+   * something that does not change by simply trying again: bad credentials, a
+   * banned client, an invalid client id, an unsupported protocol version, a
+   * malformed/protocol-violating CONNECT packet or an oversized CONNECT packet.
+   * Retrying the identical CONNECT packet would be futile, so the client stops
+   * reconnecting and emits {@link CustomPacketType.ConnectionRefused} instead.
+   *
+   * Every other reason code is treated as *transient* (for example
+   * `Server_busy`, `Server_unavailable`, `Quota_exceeded` or
+   * `Connection_rate_exceeded`). The client waits for the configured
+   * {@link ClientProperties.reconnectTime} and retries until the server accepts
+   * the connection or returns a permanent reason.
+   *
+   * @param code the CONNACK reason code, if any
+   * @returns true if reconnecting with the same CONNECT packet is futile
+   */
+  #isPermanentConnectionRefusal(code?: ConnectReasonCode): boolean {
+    if (code === undefined) {
+      return false;
+    }
+    switch (code) {
+      case ConnectReasonCode.Malformed_Packet:
+      case ConnectReasonCode.Protocol_Error:
+      case ConnectReasonCode.Unsupported_Protocol_Version:
+      case ConnectReasonCode.Client_Identifier_not_valid:
+      case ConnectReasonCode.Bad_User_Name_or_Password:
+      case ConnectReasonCode.Not_authorized:
+      case ConnectReasonCode.Banned:
+      case ConnectReasonCode.Bad_authentication_method:
+      case ConnectReasonCode.Packet_too_large:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  /**
+   * Decides whether the client should reconnect and waits for the configured
+   * delay. The wait is aborted when {@link Client.close} is called.
+   *
+   * @returns true if another connection attempt should be made, false if
+   * automatic reconnection is disabled (`reconnectTime: null`) or the client is
+   * being closed.
+   */
+  async #waitBeforeReconnect(): Promise<boolean> {
+    if (!this.#active) {
+      return false;
+    }
+    const reconnectTime = this.properties?.reconnectTime;
+    if (reconnectTime === null) {
+      return false;
+    }
+    try {
+      await delay(reconnectTime ?? DefaultClientProperties.reconnectTime, {
+        signal: this.#reconnectAbort.signal,
+      });
+    } catch {
+      // The wait was aborted by close().
+      return false;
+    }
+    return this.#active;
   }
 
   /**
@@ -430,13 +541,10 @@ export class Client implements AsyncDisposable {
             msg: new Error(`Unknown exception caught: ${e}`),
           });
         }
-        if (this.#active) {
-          await delay(
-            this.properties?.reconnectTime ??
-              DefaultClientProperties.reconnectTime,
-          );
+        if (await this.#waitBeforeReconnect()) {
+          continue;
         }
-        continue;
+        break loop;
       }
       this.#writable = con.writable.getWriter();
       const r = con.readable.getReader();
@@ -458,10 +566,35 @@ export class Client implements AsyncDisposable {
                 r.releaseLock();
                 await con.writable.close();
                 this.#writable = undefined;
+                const reason = d.value.connect_reason_code;
+                const reasonString = d.value.properties?.reason_string;
+                const reasonName = reason === undefined
+                  ? "unknown reason"
+                  : ConnectReasonCode[reason] ?? `0x${reason.toString(16)}`;
+                if (this.#isPermanentConnectionRefusal(reason)) {
+                  // The server told us to stop (wrong credentials, banned, bad
+                  // client id, unsupported protocol, ...). Retrying the same
+                  // CONNECT packet would be futile, so the client gives up and
+                  // ends the readable stream. The consumer can react to
+                  // ConnectionRefused, e.g. update the credentials and call
+                  // open() again.
+                  this.#source.enqueue({
+                    type: CustomPacketType.ConnectionRefused,
+                    msg: reasonString ?? `ConnAck ${reasonName}`,
+                  });
+                  break loop;
+                }
+                // Transient refusal (server busy/unavailable, quota exceeded,
+                // connection rate exceeded, ...). The server did not commit to
+                // us, so wait and retry until it accepts or refuses permanently.
                 this.#source.enqueue({
                   type: CustomPacketType.FailedConnectionAttempt,
-                  msg: "See connectAck reason, no reconnect attempts",
+                  msg: reasonString ??
+                    `ConnAck ${reasonName} (transient, will retry)`,
                 });
+                if (await this.#waitBeforeReconnect()) {
+                  continue loop;
+                }
                 break loop;
               }
               if (this.#connectPacket.client_id === undefined) {
@@ -502,11 +635,10 @@ export class Client implements AsyncDisposable {
               type: CustomPacketType.FailedConnectionAttempt,
               msg: "No ConnAck",
             });
-            await delay(
-              this.properties?.reconnectTime ??
-                DefaultClientProperties.reconnectTime,
-            );
-            continue loop; // retry connecting
+            if (await this.#waitBeforeReconnect()) {
+              continue loop; // retry connecting
+            }
+            break loop;
           }
         }
       } catch (e: unknown) {
@@ -533,11 +665,10 @@ export class Client implements AsyncDisposable {
             msg: new Error(`Unknown exception caught: ${e}`),
           });
         }
-        await delay(
-          this.properties?.reconnectTime ??
-            DefaultClientProperties.reconnectTime,
-        );
-        continue; // retry connecting
+        if (await this.#waitBeforeReconnect()) {
+          continue; // retry connecting
+        }
+        break loop;
       }
 
       // ping
@@ -680,6 +811,10 @@ export class Client implements AsyncDisposable {
       this.#clearPendingReplies(new Error("connection closed"));
 
       this.#source.enqueue({ type: CustomPacketType.ConnectionClosed });
+
+      if (!(await this.#waitBeforeReconnect())) {
+        break loop;
+      }
     }
   }
 

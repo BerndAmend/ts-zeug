@@ -11,6 +11,17 @@ export enum CustomPacketType {
   FailedConnectionAttempt = 101,
   PingFailed = 102,
   CloseLocally = 103,
+  /**
+   * The server permanently refused the connection (bad credentials, banned,
+   * invalid client id, unsupported protocol, malformed CONNECT, ...).
+   *
+   * The client stops reconnecting automatically and the readable stream ends
+   * after this event. The consumer has to react explicitly: update the connect
+   * packet/credentials and call `open()` again, or create a new client. The
+   * rejected CONNACK packet itself is emitted as well, immediately before this
+   * event.
+   */
+  ConnectionRefused = 104,
   Error = 200,
 }
 
@@ -20,7 +31,8 @@ export enum CustomPacketType {
 export type CustomPackets = {
   type:
     | CustomPacketType.Error
-    | CustomPacketType.FailedConnectionAttempt;
+    | CustomPacketType.FailedConnectionAttempt
+    | CustomPacketType.ConnectionRefused;
   msg?: string | Error;
 } | {
   type:
